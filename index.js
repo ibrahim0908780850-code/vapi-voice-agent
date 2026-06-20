@@ -5,53 +5,62 @@ const app = express();
 app.use(express.json());
 
 // =========================
-// 🔥 START LOGS
+// 🔥 BOOT
 // =========================
 console.log("🔥 SALIH AI STARTING...");
 console.log("🚀 SYSTEM ONLINE");
 
 // =========================
-// 🔐 ENV VARIABLES
+// 🔐 ENV
 // =========================
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 
-// =========================
-// 🗄️ SUPABASE CLIENT
-// =========================
 const supabase =
   SUPABASE_URL && SUPABASE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_KEY)
     : null;
 
 // =========================
-// 🧠 SALES AI BRAIN
+// 🧠 CLEAN TEXT
 // =========================
-function buildPrompt(message, stage) {
+function cleanText(text) {
+  return (text || "")
+    .toString()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// =========================
+// 🧠 SALES BRAIN (CLOSER MODE)
+// =========================
+function buildPrompt(message, stage, intent) {
   return `
-أنت وكيل عقاري اسمه "صالح".
+أنت "صالح" أفضل وكيل عقاري في السودان.
 
-هدفك: إغلاق صفقات عقارية وتحويل العميل لموعد زيارة.
+هدفك: إغلاق صفقة أو حجز موعد زيارة.
 
-مرحلة العميل: ${stage}
+القواعد:
+- رد قصير جداً (سطرين فقط)
+- سؤال واحد فقط
+- إذا العميل جاهز → اقترح موعد اليوم أو غداً
+- لا تعطي معلومات كثيرة
+
+المرحلة: ${stage}
+النية: ${intent}
 
 رسالة العميل:
 ${message}
-
-قواعد:
-- رد قصير جدًا
-- سؤال واحد فقط
-- هدفك دائمًا الإغلاق أو حجز موعد
 `;
 }
 
 // =========================
-// 🤖 GEMINI FUNCTION
+// 🤖 GEMINI
 // =========================
 async function callGemini(prompt) {
   try {
-    const response = await fetch(
+    const response = await globalThis.fetch(
       `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: "POST",
@@ -64,24 +73,22 @@ async function callGemini(prompt) {
 
     const data = await response.json();
 
-    return (
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "مرحباً كيف أساعدك؟"
-    );
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    return text ? cleanText(text) : "ممكن توضح طلبك أكثر؟";
+
   } catch (err) {
     console.error("Gemini Error:", err);
-    return "حدث خطأ في الذكاء الاصطناعي";
+    return "حدث خطأ مؤقت، حاول مرة أخرى";
   }
 }
 
 // =========================
-// 🏠 HEALTH CHECK
+// 🏠 HEALTH
 // =========================
 app.get("/", (req, res) => {
-  res.json({
-    ok: true,
-    message: "Salih AI Agent is running 🚀"
-  });
+  res.json({ ok: true, message: "Salih AI is running 🚀" });
 });
 
 app.get("/test", (req, res) => {
@@ -89,17 +96,22 @@ app.get("/test", (req, res) => {
 });
 
 // =========================
-// 📞 VAPI WEBHOOK (FULL SALES ENGINE)
+// 📞 VAPI WEBHOOK (FINAL SALES ENGINE)
 // =========================
 app.post("/vapi-webhook", async (req, res) => {
-  try {
-    console.log("📞 LEAD:", req.body);
+  res.setTimeout(8000);
 
-    const message =
+  try {
+    console.log("📞 VAPI:", JSON.stringify(req.body));
+
+    const message = cleanText(
       req.body?.message ||
       req.body?.transcript ||
       req.body?.input ||
-      "";
+      req.body?.speech ||
+      req.body?.text ||
+      ""
+    );
 
     const phone = req.body?.phone || "unknown";
 
@@ -107,53 +119,50 @@ app.post("/vapi-webhook", async (req, res) => {
       return res.json({ reply: "ممكن توضح أكثر؟" });
     }
 
+    const msg = message.toLowerCase();
+
     // =========================
-    // 🧠 INTENT DETECTION
+    // 🧠 INTENT ENGINE
     // =========================
+    const isPrice = /سعر|كم|بكم/.test(msg);
+    const isHot = /مهتم|أريد|ابغى|اشتري|احجز|زيارة|عايز/.test(msg);
+
     let stage = "new";
     let intent = "info";
 
-    if (
-      message.includes("سعر") ||
-      message.includes("كم") ||
-      message.includes("بكم")
-    ) {
+    if (isPrice) {
       stage = "interested";
       intent = "pricing";
     }
 
-    if (
-      message.includes("مهتم") ||
-      message.includes("أريد") ||
-      message.includes("أبغى") ||
-      message.includes("زيارة")
-    ) {
+    if (isHot) {
       stage = "hot";
       intent = "buy";
     }
 
     // =========================
-    // 🧠 SALES PROMPT
-    // =========================
-    const prompt = buildPrompt(message, stage);
-
-    // =========================
     // 🤖 AI RESPONSE
     // =========================
+    const prompt = buildPrompt(message, stage, intent);
     const aiText = await callGemini(prompt);
 
     // =========================
-    // 💾 SAVE LEAD (CRM)
+    // 💾 SAVE LEAD
     // =========================
     if (supabase) {
-      await supabase.from("leads").insert({
+      const { error } = await supabase.from("leads").insert({
         phone,
         message,
         ai_response: aiText,
         stage,
         intent,
-        status: stage === "hot" ? "closing" : "open"
+        status: stage === "hot" ? "closing" : "open",
+        created_at: new Date().toISOString()
       });
+
+      if (error) {
+        console.log("❌ Supabase Error:", error.message);
+      }
     }
 
     return res.json({
@@ -161,8 +170,10 @@ app.post("/vapi-webhook", async (req, res) => {
       stage,
       intent
     });
+
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error("❌ SERVER ERROR:", err);
+
     return res.json({
       reply: "حدث خطأ، حاول مرة أخرى"
     });
@@ -170,23 +181,25 @@ app.post("/vapi-webhook", async (req, res) => {
 });
 
 // =========================
-// 📊 LEADS DASHBOARD API
+// 📊 CRM
 // =========================
 app.get("/leads", async (req, res) => {
   if (!supabase) {
     return res.json({ error: "Supabase not configured" });
   }
 
-  const data = await supabase
+  const { data, error } = await supabase
     .from("leads")
     .select("*")
     .order("created_at", { ascending: false });
+
+  if (error) return res.json({ error: error.message });
 
   res.json(data);
 });
 
 // =========================
-// 🚀 START SERVER
+// 🚀 START
 // =========================
 const PORT = process.env.PORT || 3000;
 
