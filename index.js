@@ -9,10 +9,10 @@ app.get("/", (req, res) => {
   res.send("Salih AI Agent is running 🚀");
 });
 
-// 🔥 Supabase
+// 🔥 Supabase client (آمن)
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 );
 
 // 📞 Webhook (Vapi)
@@ -24,8 +24,8 @@ app.post("/vapi-webhook", async (req, res) => {
       return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
     }
 
-    // 🧠 Gemini AI request
-    const geminiRes = await fetch(
+    // 🧠 Gemini request (native fetch في Node 22)
+    const response = await fetch(
       "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" +
         process.env.GEMINI_API_KEY,
       {
@@ -39,7 +39,7 @@ app.post("/vapi-webhook", async (req, res) => {
               parts: [
                 {
                   text:
-                    "أنت وكيل عقاري احترافي اسمه صالح. هدفك إقناع العميل وجمع الاسم ورقم الهاتف. كن مختصر وذكي. النص: " +
+                    'أنت وكيل عقاري محترف اسمه "صالح". مهمتك إقناع العميل وجمع الاسم ورقم الهاتف. كن مختصر ومقنع. النص: ' +
                     message
                 }
               ]
@@ -49,20 +49,20 @@ app.post("/vapi-webhook", async (req, res) => {
       }
     );
 
-    const data = await geminiRes.json();
+    const data = await response.json();
 
     const aiText =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "مرحباً، كيف أساعدك اليوم؟";
+      "مرحباً، كيف أساعدك؟";
 
-    // 💾 Save to Supabase
+    // 💾 حفظ في Supabase
     await supabase.from("leads").insert({
       phone,
       message,
       ai_response: aiText
     });
 
-    // 📤 Response to Vapi
+    // 📤 رد
     res.json({ reply: aiText });
 
   } catch (err: any) {
@@ -70,7 +70,7 @@ app.post("/vapi-webhook", async (req, res) => {
   }
 });
 
-// 🚀 Start server
+// 🚀 تشغيل السيرفر
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Salih AI running on port", PORT);
