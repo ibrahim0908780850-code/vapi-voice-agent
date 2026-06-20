@@ -6,15 +6,14 @@ const app = express();
 app.use(express.json());
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 app.post("/vapi-webhook", async (req, res) => {
   try {
     const { phone, message } = req.body;
 
-    // 🧠 Gemini
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
@@ -31,11 +30,11 @@ app.post("/vapi-webhook", async (req, res) => {
     );
 
     const data = await geminiRes.json();
+
     const aiText =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "مرحباً كيف أساعدك؟";
 
-    // 💾 حفظ في Supabase
     await supabase.from("leads").insert({
       phone,
       message,
@@ -44,11 +43,11 @@ app.post("/vapi-webhook", async (req, res) => {
 
     res.json({ reply: aiText });
 
-  } catch (err) {
-    res.json({ error: err.message });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running");
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running on port", process.env.PORT);
 });
