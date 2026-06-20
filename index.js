@@ -9,13 +9,13 @@ app.get("/", (req, res) => {
   res.send("Salih AI Agent is running 🚀");
 });
 
-// 🔥 Supabase client (آمن)
+// 🔥 Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 );
 
-// 📞 Webhook (Vapi)
+// 📞 Webhook
 app.post("/vapi-webhook", async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -24,22 +24,22 @@ app.post("/vapi-webhook", async (req, res) => {
       return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
     }
 
-    // 🧠 Gemini request (native fetch في Node 22)
-    const response = await fetch(
+    // 🧠 مهم: تعريف fetch بشكل آمن
+    const fetchFn = globalThis.fetch;
+
+    const response = await fetchFn(
       "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" +
         process.env.GEMINI_API_KEY,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
             {
               parts: [
                 {
                   text:
-                    'أنت وكيل عقاري محترف اسمه "صالح". مهمتك إقناع العميل وجمع الاسم ورقم الهاتف. كن مختصر ومقنع. النص: ' +
+                    'أنت وكيل عقاري اسمه "صالح". كن مختصر ومقنع. النص: ' +
                     message
                 }
               ]
@@ -55,17 +55,15 @@ app.post("/vapi-webhook", async (req, res) => {
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "مرحباً، كيف أساعدك؟";
 
-    // 💾 حفظ في Supabase
     await supabase.from("leads").insert({
       phone,
       message,
       ai_response: aiText
     });
 
-    // 📤 رد
     res.json({ reply: aiText });
 
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
