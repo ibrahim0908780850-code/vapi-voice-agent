@@ -4,10 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 const app = express();
 app.use(express.json());
 
-// 🔥 تأكيد تشغيل السيرفر
 console.log("🔥 SALIH AI STARTING...");
 
-// 🏠 Route الرئيسي
+// 🏠 Root route (هذا يحل مشكلتك)
 app.get("/", (req, res) => {
   res.status(200).json({
     ok: true,
@@ -15,12 +14,11 @@ app.get("/", (req, res) => {
   });
 });
 
-// 🧪 اختبار سريع
 app.get("/test", (req, res) => {
   res.send("TEST OK 🚀");
 });
 
-// 🔥 Supabase
+// 🔥 Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -30,10 +28,6 @@ const supabase = createClient(
 app.post("/vapi-webhook", async (req, res) => {
   try {
     const { phone, message } = req.body;
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
-    }
 
     const response = await fetch(
       "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" +
@@ -77,8 +71,8 @@ app.post("/vapi-webhook", async (req, res) => {
   }
 });
 
-// 🚀 تشغيل السيرفر (IMPORTANT FOR RAILWAY)
-const PORT = process.env.PORT;
+// 🚀 FIX IMPORTANT: PORT fallback
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log("🚀 Server running on port", PORT);
