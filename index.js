@@ -5,193 +5,124 @@ const app = express();
 app.use(express.json());
 
 // =========================
-// ENV
+// 🔥 BOOT
 // =========================
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+console.log("🔥 SALIH AI STARTING...");
+console.log("🚀 SYSTEM ONLINE");
 
+// =========================
+// 🔐 ENV
+// =========================
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
+
+// =========================
+// 📦 SUPABASE
+// =========================
 const supabase =
   SUPABASE_URL && SUPABASE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_KEY)
     : null;
 
 // =========================
-// MEMORY (SESSION CACHE)
+// 🧠 MEMORY
 // =========================
 const sessions = new Map();
-setInterval(() => sessions.clear(), 30 * 60 * 1000);
+setInterval(() => sessions.clear(), 1000 * 60 * 30);
 
-// =========================
-// UTILS
-// =========================
-const clean = (t = "") =>
-  t.toString().replace(/\s+/g, " ").trim();
-
-function verify(req) {
-  if (!WEBHOOK_SECRET) return true;
-  return req.headers["x-webhook-secret"] === WEBHOOK_SECRET;
-}
-
-function extractPhone(text = "") {
-  const m = text.match(/(\+?\d[\d\s]{7,15})/);
-  return m ? m[0].replace(/\s/g, "") : null;
-}
-
-function detectIntent(msg = "") {
-  msg = msg.toLowerCase();
-  return {
-    price: /سعر|كم|بكم/.test(msg),
-    hot: /أبغى|اريد|عايز|مهتم|شراء|حجز|جاهز/.test(msg),
-  };
-}
-
-// =========================
-// SESSION
-// =========================
 function getSession(id) {
   if (!sessions.has(id)) {
     sessions.set(id, {
       step: 0,
       saved: false,
-      status: "new",
-      data: {
-        name: "",
-        phone: "",
-        type: "",
-        goal: "",
-        location: "",
-        budget: "",
-        time: "",
-      },
+      data: {},
     });
   }
   return sessions.get(id);
 }
 
 // =========================
-// LOAD SESSION (SAFE)
+// 🔐 VERIFY
 // =========================
-async function loadSession(callId) {
-  if (!supabase) return getSession(callId);
+function verify(req) {
+  if (!WEBHOOK_SECRET) return true;
+  return req.headers["x-webhook-secret"] === WEBHOOK_SECRET;
+}
 
-  const { data, error } = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("call_id", callId)
-    .maybeSingle();
+// =========================
+// 🧼 CLEAN
+// =========================
+function cleanText(text = "") {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
 
-  if (error || !data) return getSession(callId);
+// =========================
+// 🧠 INTENT
+// =========================
+function detectIntent(msg = "") {
+  const m = String(msg || "").toLowerCase();
 
   return {
-    step: data.step || 0,
-    saved: false,
-    status: data.status || "new",
-    data: typeof data.data === "string"
-      ? JSON.parse(data.data || "{}")
-      : data.data || {},
+    isPrice: /سعر|كم|بكم/.test(m),
+    isHot: /مهتم|أريد|ابغى|اشتري|احجز|زيارة|عايز|جاهز/.test(m),
   };
 }
 
 // =========================
-// SAVE SESSION
+// 🤖 GEMINI
 // =========================
-async function saveSession(callId, session) {
-  if (!supabase) return;
+async function callGemini(prompt) {
+  try {
+    if (!GEMINI_KEY) return "ممكن توضح أكثر؟";
 
-  await supabase.from("sessions").upsert({
-    call_id: callId,
-    step: session.step,
-    status: session.status,
-    data: session.data,
-    updated_at: new Date().toISOString(),
-  });
-}
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
 
-// =========================
-// LEAD CLASSIFICATION
-// =========================
-function classify(d) {
-  let score = 0;
+    const data = await res.json();
 
-  if (d.name) score += 10;
-  if (d.phone) score += 20;
-  if (d.type) score += 15;
-  if (d.location) score += 15;
-  if (d.budget) score += 20;
-  if (d.time) score += 20;
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (score >= 70) return "hot";
-  if (score >= 40) return "warm";
-  return "cold";
-}
-
-// =========================
-// ENGINE (SALES FLOW)
-// =========================
-function engine(session, msg) {
-  if (!msg) return "ممكن توضح أكثر؟";
-
-  const phone = extractPhone(msg);
-  const intent = detectIntent(msg);
-
-  if (phone) session.data.phone = phone;
-
-  if (intent.price) {
-    return "الأسعار تختلف حسب التفاصيل، ممكن أعرف ميزانيتك تقريباً؟";
-  }
-
-  switch (session.step) {
-    case 0:
-      session.step = 1;
-      return "مرحباً، معك صالح. ممكن اسمك الكامل؟";
-
-    case 1:
-      session.data.name = msg;
-      session.step = 2;
-      return "تمام، رقم الهاتف للتواصل؟";
-
-    case 2:
-      if (!session.data.phone && !phone)
-        return "ممكن رقم الهاتف لو سمحت؟";
-      session.step = 3;
-      return "تبحث عن شقة ولا منزل؟";
-
-    case 3:
-      session.data.type = msg;
-      session.step = 4;
-      return "شراء ولا إيجار؟";
-
-    case 4:
-      session.data.goal = msg;
-      session.step = 5;
-      return "في أي منطقة؟";
-
-    case 5:
-      session.data.location = msg;
-      session.step = 6;
-      return "ما الميزانية؟";
-
-    case 6:
-      session.data.budget = msg;
-      session.step = 7;
-      return "متى الزيارة؟ اليوم أو غداً؟";
-
-    case 7:
-      session.data.time = msg;
-      session.step = 8;
-
-      session.status = classify(session.data);
-
-      return "تمام 👍 تم تسجيل طلبك، سيتم التواصل معك قريباً.";
-
-    default:
-      return "تمام، كيف أقدر أساعدك أكثر؟";
+    return text ? cleanText(text) : "ممكن توضح أكثر؟";
+  } catch (err) {
+    console.error("Gemini Error:", err);
+    return "حدث خطأ مؤقت";
   }
 }
 
 // =========================
-// WEBHOOK
+// 🧠 PROMPT
+// =========================
+function buildPrompt(message, stage, intent) {
+  return `
+أنت "صالح" وكيل عقاري في السودان.
+
+هدفك: إغلاق صفقة أو حجز زيارة.
+
+القواعد:
+- سطرين فقط
+- سؤال واحد فقط
+- طبيعي جداً
+
+المرحلة: ${stage}
+النية: ${JSON.stringify(intent)}
+
+رسالة العميل:
+${message}
+`;
+}
+
+// =========================
+// 📞 WEBHOOK
 // =========================
 app.post("/vapi-webhook", async (req, res) => {
   try {
@@ -199,56 +130,108 @@ app.post("/vapi-webhook", async (req, res) => {
       return res.status(401).json({ reply: "unauthorized" });
     }
 
-    const msg = clean(
+    const callId = req.body?.call_id || "default";
+    const session = getSession(callId);
+
+    const message = cleanText(
       req.body?.message ||
       req.body?.transcript ||
+      req.body?.input ||
+      req.body?.speech ||
       req.body?.text ||
       ""
     );
 
-    const callId = req.body?.call_id || "default";
-
-    const session = await loadSession(callId);
-
-    const reply = engine(session, msg);
-
-    await saveSession(callId, session);
-
-    // FINAL SAVE (NO DUPLICATES)
-    if (session.step >= 8 && supabase && !session.saved) {
-      session.saved = true;
-
-      session.status = classify(session.data);
-
-      await supabase.from("leads").insert({
-        ...session.data,
-        status: session.status,
-        created_at: new Date().toISOString(),
-      });
-
-      sessions.delete(callId);
+    if (!message) {
+      return res.json({ reply: "ممكن توضح أكثر؟" });
     }
 
-    return res.json({ reply });
+    const intent = detectIntent(message);
+
+    let stage = "new";
+
+    // =========================
+    // FLOW (SAFE STATE MACHINE)
+    // =========================
+    if (session.step === 0) {
+      session.step = 1;
+      return res.json({ reply: "مرحباً 👋 معك صالح، ممكن اسمك؟" });
+    }
+
+    if (session.step === 1) {
+      session.data.name = message;
+      session.step = 2;
+      return res.json({ reply: "تمام، رقم الهاتف؟" });
+    }
+
+    if (session.step === 2) {
+      session.data.phone = message;
+      session.step = 3;
+      return res.json({ reply: "شقة ولا منزل؟" });
+    }
+
+    if (session.step === 3) {
+      session.data.type = message;
+      session.step = 4;
+      return res.json({ reply: "شراء ولا إيجار؟" });
+    }
+
+    if (session.step === 4) {
+      session.data.goal = message;
+      session.step = 5;
+      return res.json({ reply: "ما المنطقة؟" });
+    }
+
+    if (session.step === 5) {
+      session.data.location = message;
+      session.step = 6;
+      return res.json({ reply: "ما ميزانيتك؟" });
+    }
+
+    if (session.step === 6) {
+      session.data.budget = message;
+      session.step = 7;
+
+      stage = "hot";
+
+      const prompt = buildPrompt(message, stage, intent);
+      const aiText = await callGemini(prompt);
+
+      // =========================
+      // 💾 SAVE LEAD (SAFE ONCE)
+      // =========================
+      if (supabase && !session.saved) {
+        session.saved = true;
+
+        try {
+          await supabase.from("leads").insert({
+            ...session.data,
+            stage,
+            created_at: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.error("DB ERROR:", dbErr.message);
+        }
+
+        sessions.delete(callId);
+      }
+
+      return res.json({ reply: aiText });
+    }
+
+    return res.json({ reply: "كيف أقدر أساعدك؟" });
 
   } catch (err) {
-    console.error("WEBHOOK ERROR:", err);
+    console.error("SERVER ERROR:", err);
     return res.json({ reply: "حدث خطأ مؤقت" });
   }
 });
 
 // =========================
-// HEALTH CHECK
-// =========================
-app.get("/", (req, res) => {
-  res.send("SALIH AI PRODUCTION V8 🚀");
-});
-
-// =========================
-// START SERVER
+// 🚀 START
 // =========================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("🚀 RUNNING ON", PORT);
+  console.log("🚀 RUNNING ON PORT", PORT);
 });
