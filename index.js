@@ -27,24 +27,43 @@ const supabase =
     : null;
 
 // =========================
-// 🧠 MEMORY
+// 🧠 MEMORY SAFE SESSIONS
 // =========================
 const sessions = new Map();
-setInterval(() => sessions.clear(), 1000 * 60 * 30);
+
+// تنظيف تلقائي للذاكرة (كل ساعة بدون نشاط)
+setInterval(() => {
+  const now = Date.now();
+
+  for (const [id, session] of sessions.entries()) {
+    if (!session?.lastActive) continue;
+
+    if (now - session.lastActive > 1000 * 60 * 60) {
+      sessions.delete(id);
+    }
+  }
+}, 1000 * 60 * 10);
 
 function getSession(id) {
-  if (!sessions.has(id)) {
-    sessions.set(id, {
+  const safeId = id || "default";
+
+  if (!sessions.has(safeId)) {
+    sessions.set(safeId, {
       step: 0,
       saved: false,
       data: {},
+      lastActive: Date.now(),
     });
   }
-  return sessions.get(id);
+
+  const session = sessions.get(safeId);
+  session.lastActive = Date.now();
+
+  return session;
 }
 
 // =========================
-// 🔐 VERIFY
+// 🔐 WEBHOOK SECURITY
 // =========================
 function verify(req) {
   if (!WEBHOOK_SECRET) return true;
@@ -52,17 +71,17 @@ function verify(req) {
 }
 
 // =========================
-// 🧼 CLEAN
+// 🧼 CLEAN TEXT
 // =========================
 function cleanText(text = "") {
-  return String(text || "").replace(/\s+/g, " ").trim();
+  return String(text).replace(/\s+/g, " ").trim();
 }
 
 // =========================
-// 🧠 INTENT
+// 🧠 INTENT DETECTION
 // =========================
 function detectIntent(msg = "") {
-  const m = String(msg || "").toLowerCase();
+  const m = String(msg).toLowerCase();
 
   return {
     isPrice: /سعر|كم|بكم/.test(m),
@@ -71,7 +90,7 @@ function detectIntent(msg = "") {
 }
 
 // =========================
-// 🤖 GEMINI
+// 🤖 GEMINI CALL
 // =========================
 async function callGemini(prompt) {
   try {
@@ -89,29 +108,28 @@ async function callGemini(prompt) {
     );
 
     const data = await res.json();
-
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    return text ? cleanText(text) : "ممكن توضح أكثر؟";
+    return cleanText(text || "ممكن توضح أكثر؟");
   } catch (err) {
     console.error("Gemini Error:", err);
-    return "حدث خطأ مؤقت";
+    return "حدث خطأ مؤقت، حاول مرة أخرى";
   }
 }
 
 // =========================
-// 🧠 PROMPT
+// 🧠 PROMPT ENGINE
 // =========================
 function buildPrompt(message, stage, intent) {
   return `
 أنت "صالح" وكيل عقاري في السودان.
 
-هدفك: إغلاق صفقة أو حجز زيارة.
+هدفك: إغلاق صفقة أو حجز زيارة بسرعة.
 
 القواعد:
 - سطرين فقط
 - سؤال واحد فقط
-- طبيعي جداً
+- أسلوب بشري طبيعي جداً
 
 المرحلة: ${stage}
 النية: ${JSON.stringify(intent)}
@@ -122,7 +140,7 @@ ${message}
 }
 
 // =========================
-// 📞 WEBHOOK
+// 📞 WEBHOOK (VAPI)
 // =========================
 app.post("/vapi-webhook", async (req, res) => {
   try {
@@ -148,10 +166,8 @@ app.post("/vapi-webhook", async (req, res) => {
 
     const intent = detectIntent(message);
 
-    let stage = "new";
-
     // =========================
-    // FLOW (SAFE STATE MACHINE)
+    // FLOW ENGINE (SALES FUNNEL)
     // =========================
     if (session.step === 0) {
       session.step = 1;
@@ -161,7 +177,7 @@ app.post("/vapi-webhook", async (req, res) => {
     if (session.step === 1) {
       session.data.name = message;
       session.step = 2;
-      return res.json({ reply: "تمام، رقم الهاتف؟" });
+      return res.json({ reply: "رقم الهاتف للتواصل؟" });
     }
 
     if (session.step === 2) {
@@ -179,42 +195,41 @@ app.post("/vapi-webhook", async (req, res) => {
     if (session.step === 4) {
       session.data.goal = message;
       session.step = 5;
-      return res.json({ reply: "ما المنطقة؟" });
+      return res.json({ reply: "ما المنطقة التي تريدها؟" });
     }
 
     if (session.step === 5) {
       session.data.location = message;
       session.step = 6;
-      return res.json({ reply: "ما ميزانيتك؟" });
+      return res.json({ reply: "ما ميزانيتك تقريباً؟" });
     }
 
+    // =========================
+    // FINAL STEP → AI + SAVE
+    // =========================
     if (session.step === 6) {
       session.data.budget = message;
       session.step = 7;
 
-      stage = "hot";
-
-      const prompt = buildPrompt(message, stage, intent);
+      const prompt = buildPrompt(message, "hot", intent);
       const aiText = await callGemini(prompt);
 
-      // =========================
-      // 💾 SAVE LEAD (SAFE ONCE)
-      // =========================
+      // 💾 SAVE LEAD ONCE
       if (supabase && !session.saved) {
         session.saved = true;
 
         try {
           await supabase.from("leads").insert({
             ...session.data,
-            stage,
+            stage: "hot",
             created_at: new Date().toISOString(),
           });
         } catch (dbErr) {
           console.error("DB ERROR:", dbErr.message);
         }
-
-        sessions.delete(callId);
       }
+
+      sessions.delete(callId);
 
       return res.json({ reply: aiText });
     }
@@ -228,7 +243,7 @@ app.post("/vapi-webhook", async (req, res) => {
 });
 
 // =========================
-// 🚀 START
+// 🚀 START SERVER
 // =========================
 const PORT = process.env.PORT || 3000;
 
