@@ -4,40 +4,32 @@ import { createClient } from "@supabase/supabase-js";
 const app = express();
 app.use(express.json());
 
-// =========================
-// 🔥 BOOT
-// =========================
 console.log("🔥 SALIH AI STARTING...");
-console.log("🚀 SYSTEM ONLINE");
+console.log("🚀 PRODUCTION MODE ACTIVE");
 
 // =========================
-// 🔐 ENV
+// ENV
 // =========================
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 
-// =========================
-// 📦 SUPABASE
-// =========================
 const supabase =
   SUPABASE_URL && SUPABASE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_KEY)
     : null;
 
 // =========================
-// 🧠 MEMORY SAFE SESSIONS
+// SESSIONS (PRODUCTION SAFE)
 // =========================
 const sessions = new Map();
 
-// تنظيف تلقائي للذاكرة (كل ساعة بدون نشاط)
 setInterval(() => {
   const now = Date.now();
 
   for (const [id, session] of sessions.entries()) {
     if (!session?.lastActive) continue;
-
     if (now - session.lastActive > 1000 * 60 * 60) {
       sessions.delete(id);
     }
@@ -45,14 +37,14 @@ setInterval(() => {
 }, 1000 * 60 * 10);
 
 function getSession(id) {
-  const safeId = id || "default";
+  const safeId = String(id || "default");
 
   if (!sessions.has(safeId)) {
     sessions.set(safeId, {
       step: 0,
       saved: false,
-      data: {},
       lastActive: Date.now(),
+      data: {},
     });
   }
 
@@ -63,7 +55,7 @@ function getSession(id) {
 }
 
 // =========================
-// 🔐 WEBHOOK SECURITY
+// VERIFY WEBHOOK
 // =========================
 function verify(req) {
   if (!WEBHOOK_SECRET) return true;
@@ -71,14 +63,14 @@ function verify(req) {
 }
 
 // =========================
-// 🧼 CLEAN TEXT
+// CLEAN TEXT
 // =========================
 function cleanText(text = "") {
   return String(text).replace(/\s+/g, " ").trim();
 }
 
 // =========================
-// 🧠 INTENT DETECTION
+// INTENT DETECTION
 // =========================
 function detectIntent(msg = "") {
   const m = String(msg).toLowerCase();
@@ -90,7 +82,7 @@ function detectIntent(msg = "") {
 }
 
 // =========================
-// 🤖 GEMINI CALL
+// GEMINI
 // =========================
 async function callGemini(prompt) {
   try {
@@ -108,17 +100,20 @@ async function callGemini(prompt) {
     );
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    return cleanText(text || "ممكن توضح أكثر؟");
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "ممكن توضح أكثر؟";
+
+    return cleanText(text);
   } catch (err) {
-    console.error("Gemini Error:", err);
-    return "حدث خطأ مؤقت، حاول مرة أخرى";
+    console.error("❌ GEMINI ERROR:", err);
+    return "حدث خطأ مؤقت";
   }
 }
 
 // =========================
-// 🧠 PROMPT ENGINE
+// PROMPT
 // =========================
 function buildPrompt(message, stage, intent) {
   return `
@@ -129,7 +124,7 @@ function buildPrompt(message, stage, intent) {
 القواعد:
 - سطرين فقط
 - سؤال واحد فقط
-- أسلوب بشري طبيعي جداً
+- لا تخرج عن الدور
 
 المرحلة: ${stage}
 النية: ${JSON.stringify(intent)}
@@ -140,17 +135,62 @@ ${message}
 }
 
 // =========================
-// 📞 WEBHOOK (VAPI)
+// 🔥 VAPI WEBHOOK (PRODUCTION SAFE)
 // =========================
 app.post("/vapi-webhook", async (req, res) => {
   try {
     if (!verify(req)) {
-      return res.status(401).json({ reply: "unauthorized" });
+      return res.status(401).json({ error: "unauthorized" });
     }
 
-    const callId = req.body?.call_id || "default";
+    // =========================
+    // SAFE CALL ID EXTRACTION
+    // =========================
+    const callId =
+      req.body?.call?.id ||
+      req.body?.call_id ||
+      req.body?.id ||
+      req.body?.conversationId ||
+      "default";
+
     const session = getSession(callId);
 
+    // =========================
+    // TOOL CALL DETECTION (REAL VAPI SUPPORT)
+    // =========================
+    const toolData =
+      req.body?.toolArguments ||
+      req.body?.arguments ||
+      req.body?.data ||
+      req.body?.toolCalls?.[0]?.function?.arguments ||
+      req.body?.functionCall?.arguments ||
+      req.body?.tool_call?.arguments;
+
+    if (toolData && typeof toolData === "object") {
+      session.data = { ...session.data, ...toolData };
+
+      if (supabase && !session.saved) {
+        session.saved = true;
+
+        const { error } = await supabase.from("leads").insert({
+          ...session.data,
+          stage: toolData.stage || "hot",
+          created_at: new Date().toISOString(),
+        });
+
+        if (error) {
+          console.error("❌ SUPABASE ERROR:", error.message);
+        } else {
+          console.log("✅ LEAD SAVED SUCCESSFULLY");
+        }
+      }
+
+      return res.json({ success: true });
+    }
+
+    // =========================
+    // MESSAGE EXTRACTION
+    // =========================
     const message = cleanText(
       req.body?.message ||
       req.body?.transcript ||
@@ -167,7 +207,7 @@ app.post("/vapi-webhook", async (req, res) => {
     const intent = detectIntent(message);
 
     // =========================
-    // FLOW ENGINE (SALES FUNNEL)
+    // FLOW ENGINE
     // =========================
     if (session.step === 0) {
       session.step = 1;
@@ -205,7 +245,7 @@ app.post("/vapi-webhook", async (req, res) => {
     }
 
     // =========================
-    // FINAL STEP → AI + SAVE
+    // FINAL STEP
     // =========================
     if (session.step === 6) {
       session.data.budget = message;
@@ -214,18 +254,17 @@ app.post("/vapi-webhook", async (req, res) => {
       const prompt = buildPrompt(message, "hot", intent);
       const aiText = await callGemini(prompt);
 
-      // 💾 SAVE LEAD ONCE
       if (supabase && !session.saved) {
         session.saved = true;
 
-        try {
-          await supabase.from("leads").insert({
-            ...session.data,
-            stage: "hot",
-            created_at: new Date().toISOString(),
-          });
-        } catch (dbErr) {
-          console.error("DB ERROR:", dbErr.message);
+        const { error } = await supabase.from("leads").insert({
+          ...session.data,
+          stage: "hot",
+          created_at: new Date().toISOString(),
+        });
+
+        if (error) {
+          console.error("❌ SUPABASE ERROR:", error.message);
         }
       }
 
@@ -237,16 +276,16 @@ app.post("/vapi-webhook", async (req, res) => {
     return res.json({ reply: "كيف أقدر أساعدك؟" });
 
   } catch (err) {
-    console.error("SERVER ERROR:", err);
+    console.error("❌ SERVER ERROR:", err);
     return res.json({ reply: "حدث خطأ مؤقت" });
   }
 });
 
 // =========================
-// 🚀 START SERVER
+// START SERVER
 // =========================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("🚀 RUNNING ON PORT", PORT);
+  console.log("🚀 SERVER RUNNING ON PORT", PORT);
 });
