@@ -4,15 +4,13 @@ import crypto from "crypto";
 import Redis from "ioredis";
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 
-// =========================
-// ENV
-// =========================
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   REDIS_URL,
+  PORT = 3000,
 } = process.env;
 
 // =========================
@@ -24,271 +22,204 @@ const supabase =
     : null;
 
 // =========================
-// REDIS SAFE
+// REDIS
 // =========================
-let redis = null;
-let redisAlive = false;
-
-if (REDIS_URL) {
-  redis = new Redis(REDIS_URL, {
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-  });
-
-  redis.on("error", () => (redisAlive = false));
-  redis.on("connect", () => (redisAlive = true));
-}
+const redis = REDIS_URL
+  ? new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 2,
+      enableOfflineQueue: false,
+      reconnectOnError: () => true,
+    })
+  : null;
 
 // =========================
-// MEMORY FALLBACK
+// MEMORY QUEUE
 // =========================
-const memory = new Map();
+const memoryQueue = [];
 
 // =========================
-// CONFIG
+// QUEUE PUSH (SAFE)
 // =========================
-const SESSION_TTL = 60 * 30;
-
-// =========================
-// UTILS
-// =========================
-const clean = (v = "") =>
-  String(v)
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-
-const normalizePhone = (p = "") =>
-  String(p).replace(/\s+/g, "").trim().slice(0, 30);
-
-const requestId = (req) =>
-  req.headers["x-request-id"] || crypto.randomUUID();
-
-// =========================
-// SAFE JSON PARSE
-// =========================
-function safeJSONParse(str) {
+function pushJob(job) {
   try {
-    return JSON.parse(str);
-  } catch {
-    return null;
+    const payload = JSON.stringify(job);
+
+    if (redis && redis.status === "ready") {
+      redis.lpush("vapi_jobs", payload);
+    } else {
+      memoryQueue.push(job);
+    }
+  } catch (e) {
+    console.log("queue error:", e.message);
   }
 }
 
 // =========================
-// TOOL PARSER (VAPI SAFE)
+// TOOL PARSER (IMPROVED DEBUG)
 // =========================
 function parseTool(req) {
   try {
-    const t =
+    const raw =
       req.body?.message?.toolCalls?.[0]?.function?.arguments ||
       req.body?.message?.toolCalls?.[0]?.arguments ||
       req.body?.toolArguments ||
       req.body?.arguments;
 
-    if (!t) return null;
+    if (!raw) return null;
 
-    if (typeof t === "string") return safeJSONParse(t);
-    if (typeof t === "object") return t;
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    return null;
-  } catch {
+  } catch (err) {
+    console.log("❌ Tool parse error:", err.message);
     return null;
   }
 }
 
 // =========================
-// SESSION
+// DEDUP CACHE (ANTI SPAM)
 // =========================
-async function getSession(id) {
-  try {
-    if (redis && redisAlive) {
-      const v = await redis.get(`s:${id}`);
-      if (v) return safeJSONParse(v);
-    }
-  } catch {}
+const seen = new Map();
 
-  return memory.get(id) || null;
-}
+// =========================
+// SCORE
+// =========================
+function scoreLead(data) {
+  let score = 5;
 
-async function saveSession(id, session) {
-  try {
-    session.updatedAt = Date.now();
-    memory.set(id, session);
+  if (data.phone) score += 30;
+  if (data.full_name) score += 20;
+  if (data.city) score += 10;
+  if (data.intent) score += 15;
+  if (data.stage === "warm") score += 15;
+  if (data.stage === "hot") score += 25;
 
-    if (redis && redisAlive) {
-      await redis.set(
-        `s:${id}`,
-        JSON.stringify(session),
-        "EX",
-        SESSION_TTL
-      );
-    }
-  } catch {}
+  return Math.min(score, 100);
 }
 
 // =========================
-// STAGE NORMALIZER
+// PROCESS JOB
 // =========================
-function normalizeStage(s = "") {
-  const v = String(s).toLowerCase();
+async function processJob(job) {
+  if (!supabase) return;
 
-  if (v.includes("hot") || v.includes("urgent")) return "hot";
-  if (v.includes("warm") || v.includes("interested")) return "warm";
-  if (v.includes("appointment") || v.includes("visit")) return "appointment";
-  if (v.includes("lost")) return "lost";
+  const tool = job.tool;
+  if (!tool) return;
 
-  return "new";
-}
+  // 🔥 DEDUP (10 sec)
+  const key = tool.phone + tool.fullName;
+  if (seen.has(key)) return;
+  seen.set(key, Date.now());
 
-// =========================
-// WEBHOOK
-// =========================
-app.post("/webhook", async (req, res) => {
-  const rid = requestId(req);
+  setTimeout(() => seen.delete(key), 10000);
+
+  const payload = {
+    full_name: tool.fullName || tool.name || "",
+    phone: tool.phone || tool.phoneNumber || "",
+    city: tool.city || "",
+    district: tool.district || "",
+    budget: tool.budget || "",
+    property_type: tool.propertyType || "",
+    intent: tool.intent || "",
+    stage: tool.stage || "new",
+    source: "vapi",
+  };
+
+  payload.lead_score = scoreLead(payload);
 
   try {
-    const sessionId =
-      req.body?.call?.phoneNumber ||
-      req.body?.callId ||
-      req.body?.conversationId ||
-      `anon_${rid}`;
+    const { data, error } = await supabase
+      .from("leads")
+      .upsert(payload, { onConflict: "phone" })
+      .select("id")
+      .single();
 
-    let session = await getSession(sessionId);
+    if (error) throw error;
 
-    if (!session) {
-      session = {
-        data: {},
-        step: 1,
-        saved: false,
-        lastSavedAt: 0,
-      };
-    }
-
-    const tool = parseTool(req);
-
-    // =========================
-    // TOOL FLOW
-    // =========================
-    if (tool) {
-      session.data = { ...session.data, ...tool };
-
-      const payload = {
-        full_name: clean(session.data.fullName) || null,
-
-        phone: normalizePhone(
-          session.data.phone ||
-          session.data.phoneNumber ||
-          tool.phone ||
-          ""
-        ) || null,
-
-        city: clean(session.data.city) || null,
-        district: clean(session.data.district) || null,
-        budget: clean(session.data.budget) || null,
-        property_type: clean(session.data.propertyType) || null,
-
-        intent: clean(tool.intent || session.data.intent) || null,
-
-        stage: normalizeStage(
-          tool.stage || tool.leadStatus || session.data.stage || "new"
-        ),
-
+    if (data?.id) {
+      await supabase.from("calls").insert({
+        lead_id: data.id,
+        phone: payload.phone,
+        transcript: job.body?.message?.text || null,
+        call_status: "completed",
         source: "vapi",
-      };
+      });
+    }
 
-      // SCORE
-      let score = 5;
-      if (payload.phone) score += 25;
-      if (payload.full_name) score += 15;
-      if (payload.intent) score += 20;
+  } catch (err) {
+    console.log("❌ Worker Error:", err.message);
+  }
+}
 
-      payload.lead_score = Math.min(score, 100);
+// =========================
+// WORKER (RESILIENT LOOP)
+// =========================
+async function startWorker() {
+  console.log("⚙️ Worker started...");
 
-      const valid = payload.phone || payload.full_name;
-      const duplicate = Date.now() - session.lastSavedAt < 15000;
+  while (true) {
+    try {
+      let job;
 
-      if (supabase && valid && !duplicate) {
-        session.lastSavedAt = Date.now();
+      if (redis && redis.status === "ready") {
+        const res = await redis.brpop("vapi_jobs", 5);
 
-        try {
-          const { data, error } = await supabase
-            .from("leads")
-            .upsert(payload, { onConflict: "phone" })
-            .select("id")
-            .single();
+        if (!res) continue;
+        job = JSON.parse(res[1]);
 
-          if (error) throw error;
-
-          const leadId = data?.id;
-
-          if (leadId) {
-            await supabase.from("calls").insert({
-              lead_id: leadId,
-              phone: payload.phone,
-              transcript: session.data.transcript || null,
-              ai_response: session.data.ai_response || null,
-              duration: session.data.duration || null,
-              call_status: "completed",
-              source: "vapi",
-            });
-          }
-
-          session.saved = true;
-        } catch (e) {
-          console.log("SUPABASE ERROR:", e.message);
+      } else {
+        job = memoryQueue.shift();
+        if (!job) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
         }
       }
 
-      await saveSession(sessionId, session);
-      return res.json({ ok: true, rid });
+      await processJob(job);
+
+    } catch (err) {
+      console.log("🔥 Worker crash recovered:", err.message);
+      await new Promise(r => setTimeout(r, 1000));
     }
+  }
+}
 
-    // =========================
-    // NORMAL FLOW
-    // =========================
-    const msg = clean(req.body?.message?.text);
+// =========================
+// WEBHOOK (FAST)
+// =========================
+app.post("/webhook", (req, res) => {
+  try {
+    const tool = parseTool(req);
 
-    if (!msg) {
-      return res.json({ reply: "كيف يمكنني مساعدتك؟", rid });
-    }
+    const job = {
+      id: crypto.randomUUID(),
+      tool,
+      body: req.body,
+      ts: Date.now(),
+    };
 
-    if (session.step === 1) {
-      session.data.fullName = msg;
-      session.step = 2;
-    } else if (session.step === 2) {
-      session.data.propertyType = msg;
-      session.step = 3;
-    } else {
-      session.step = 1;
-      session.data = {};
-    }
-
-    await saveSession(sessionId, session);
+    if (tool) pushJob(job);
 
     return res.json({
-      reply:
-        session.step === 2
-          ? "هل تبحث عن شراء أم إيجار؟"
-          : session.step === 3
-          ? "تم تسجيل طلبك 👍"
-          : "كيف أساعدك؟",
-      rid,
+      success: true,
+      queued: !!tool,
     });
 
-  } catch (e) {
-    return res.status(500).json({
-      error: "server_error",
-      rid,
-    });
+  } catch {
+    return res.status(200).json({ success: false });
   }
 });
 
 // =========================
-// START SERVER
+// HEALTH
 // =========================
-const PORT = process.env.PORT || 3000;
+app.get("/", (req, res) => {
+  res.send("SALIH AI SERVER RUNNING 🚀");
+});
 
+// =========================
+// START
+// =========================
 app.listen(PORT, () => {
-  console.log("🚀 AI Voice Agent running on", PORT);
+  console.log("🚀 Server running on port", PORT);
+  startWorker();
 });
