@@ -36,9 +36,10 @@ const redis = REDIS_URL
 // MEMORY QUEUE
 // =========================
 const memoryQueue = [];
+const seen = new Map();
 
 // =========================
-// QUEUE PUSH (SAFE)
+// QUEUE PUSH
 // =========================
 function pushJob(job) {
   try {
@@ -55,7 +56,7 @@ function pushJob(job) {
 }
 
 // =========================
-// TOOL PARSER (IMPROVED DEBUG)
+// TOOL PARSER
 // =========================
 function parseTool(req) {
   try {
@@ -67,69 +68,86 @@ function parseTool(req) {
 
     if (!raw) return null;
 
-    return typeof raw === "string" ? JSON.parse(raw) : raw;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-  } catch (err) {
-    console.log("❌ Tool parse error:", err.message);
+    // 🔥 safety guard
+    if (!parsed || typeof parsed !== "object") return null;
+
+    return parsed;
+  } catch {
     return null;
   }
 }
 
 // =========================
-// DEDUP CACHE (ANTI SPAM)
+// NORMALIZER
 // =========================
-const seen = new Map();
+function normalizeTool(t = {}) {
+  return {
+    full_name: t.fullName || t.full_name || t.name || "",
+    phone: t.phone || t.phoneNumber || t.phone_number || "",
+    city: t.city || "",
+    district: t.district || "",
+    budget: t.budget || "",
+    property_type: t.propertyType || t.property_type || "",
+    intent: t.intent || "",
+    stage: t.stage || "new",
+  };
+}
 
 // =========================
-// SCORE
+// SCORE ENGINE
 // =========================
-function scoreLead(data) {
-  let score = 5;
+function scoreLead(d) {
+  let score = 10;
 
-  if (data.phone) score += 30;
-  if (data.full_name) score += 20;
-  if (data.city) score += 10;
-  if (data.intent) score += 15;
-  if (data.stage === "warm") score += 15;
-  if (data.stage === "hot") score += 25;
+  if (d.phone?.length > 5) score += 35;
+  if (d.full_name) score += 20;
+  if (d.city) score += 10;
+  if (d.intent) score += 15;
+  if (d.budget) score += 10;
+
+  if (d.stage === "warm") score += 10;
+  if (d.stage === "hot") score += 20;
 
   return Math.min(score, 100);
+}
+
+// =========================
+// DECISION ENGINE
+// =========================
+function decideLead(score) {
+  if (score >= 80) return "hot";
+  if (score >= 50) return "warm";
+  return "cold";
 }
 
 // =========================
 // PROCESS JOB
 // =========================
 async function processJob(job) {
-  if (!supabase) return;
+  if (!supabase || !job?.tool) return;
 
-  const tool = job.tool;
-  if (!tool) return;
+  const tool = normalizeTool(job.tool);
 
-  // 🔥 DEDUP (10 sec)
-  const key = tool.phone + tool.fullName;
-  if (seen.has(key)) return;
-  seen.set(key, Date.now());
+  // 🔥 FIXED DEDUP
+  if (!tool.phone || tool.phone.length < 5) return;
 
-  setTimeout(() => seen.delete(key), 10000);
+  if (seen.has(tool.phone)) return;
+  seen.set(tool.phone, Date.now());
 
-  const payload = {
-    full_name: tool.fullName || tool.name || "",
-    phone: tool.phone || tool.phoneNumber || "",
-    city: tool.city || "",
-    district: tool.district || "",
-    budget: tool.budget || "",
-    property_type: tool.propertyType || "",
-    intent: tool.intent || "",
-    stage: tool.stage || "new",
-    source: "vapi",
-  };
+  setTimeout(() => seen.delete(tool.phone), 15000);
 
-  payload.lead_score = scoreLead(payload);
+  const score = scoreLead(tool);
+  const stage = decideLead(score);
+
+  tool.lead_score = score;
+  tool.stage = stage;
 
   try {
     const { data, error } = await supabase
       .from("leads")
-      .upsert(payload, { onConflict: "phone" })
+      .upsert(tool, { onConflict: "phone" })
       .select("id")
       .single();
 
@@ -138,7 +156,7 @@ async function processJob(job) {
     if (data?.id) {
       await supabase.from("calls").insert({
         lead_id: data.id,
-        phone: payload.phone,
+        phone: tool.phone,
         transcript: job.body?.message?.text || null,
         call_status: "completed",
         source: "vapi",
@@ -151,7 +169,7 @@ async function processJob(job) {
 }
 
 // =========================
-// WORKER (RESILIENT LOOP)
+// WORKER
 // =========================
 async function startWorker() {
   console.log("⚙️ Worker started...");
@@ -162,10 +180,8 @@ async function startWorker() {
 
       if (redis && redis.status === "ready") {
         const res = await redis.brpop("vapi_jobs", 5);
-
         if (!res) continue;
         job = JSON.parse(res[1]);
-
       } else {
         job = memoryQueue.shift();
         if (!job) {
@@ -177,18 +193,22 @@ async function startWorker() {
       await processJob(job);
 
     } catch (err) {
-      console.log("🔥 Worker crash recovered:", err.message);
+      console.log("🔥 Worker recovered:", err.message);
       await new Promise(r => setTimeout(r, 1000));
     }
   }
 }
 
 // =========================
-// WEBHOOK (FAST)
+// WEBHOOK (VAPI SMART RESPONSE)
 // =========================
 app.post("/webhook", (req, res) => {
   try {
     const tool = parseTool(req);
+
+    const norm = normalizeTool(tool || {});
+    const score = scoreLead(norm);
+    const stage = decideLead(score);
 
     const job = {
       id: crypto.randomUUID(),
@@ -200,12 +220,33 @@ app.post("/webhook", (req, res) => {
     if (tool) pushJob(job);
 
     return res.json({
-      success: true,
-      queued: !!tool,
+      result: {
+        success: true,
+        stage,
+        score,
+        next_action:
+          stage === "hot"
+            ? "book_visit"
+            : stage === "warm"
+            ? "qualify_lead"
+            : "ask_budget_and_location",
+
+        message:
+          stage === "hot"
+            ? "عميل جاهز للحجز الآن، اقترح زيارة مباشرة"
+            : stage === "warm"
+            ? "عميل مهتم، اجمع تفاصيل أكثر قبل الحجز"
+            : "يحتاج معلومات إضافية لتأهيله"
+      }
     });
 
   } catch {
-    return res.status(200).json({ success: false });
+    return res.status(200).json({
+      result: {
+        success: false,
+        message: "fallback response"
+      }
+    });
   }
 });
 
@@ -213,13 +254,13 @@ app.post("/webhook", (req, res) => {
 // HEALTH
 // =========================
 app.get("/", (req, res) => {
-  res.send("SALIH AI SERVER RUNNING 🚀");
+  res.send("SALIH AI FULL SYSTEM RUNNING 🚀");
 });
 
 // =========================
 // START
 // =========================
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
+  console.log("🚀 SALIH AI RUNNING ON PORT", PORT);
   startWorker();
 });
