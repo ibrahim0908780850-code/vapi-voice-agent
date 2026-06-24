@@ -1,286 +1,132 @@
-import express from "express";
-import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
-import Redis from "ioredis";
+const tool = parseTool(req);
 
-const app = express();
-app.use(express.json({ limit: "1mb" }));
+if (tool) {
+  session.data = { ...session.data, ...tool };
+  session.updatedAt = Date.now();
 
-// =========================
-// ENV
-// =========================
-const {
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  REDIS_URL,
-} = process.env;
+  // =========================
+  // HELPERS
+  // =========================
+  const clean = (v = "") =>
+    v.toString().trim().slice(0, 120);
 
-// =========================
-// SUPABASE
-// =========================
-const supabase =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false },
-      })
-    : null;
+  const normalizePhone = (p = "") =>
+    p.toString().replace(/\s+/g, "").trim().slice(0, 30);
 
-// =========================
-// REDIS
-// =========================
-const redis = new Redis(REDIS_URL, {
-  maxRetriesPerRequest: 2,
-  enableOfflineQueue: false,
-  lazyConnect: true,
-});
+  const normalizeStage = (s = "") => {
+    const v = s.toString().toLowerCase();
 
-let redisAlive = false;
-redis.on("connect", () => (redisAlive = true));
-redis.on("error", () => (redisAlive = false));
+    if (v.includes("hot") || v.includes("urgent")) return "hot";
+    if (v.includes("warm") || v.includes("interested")) return "warm";
+    if (v.includes("appointment") || v.includes("visit")) return "appointment";
+    if (v.includes("lost") || v.includes("no")) return "lost";
 
-// =========================
-// CONFIG
-// =========================
-const SESSION_TTL = 60 * 30;
-const LOCK_TTL = 5;
+    return "new";
+  };
 
-// =========================
-// MEMORY FALLBACK
-// =========================
-const memory = new Map();
+  // =========================
+  // PAYLOAD (MATCH SUPABASE SCHEMA)
+  // =========================
+  const payload = {
+    full_name: clean(session.data.fullName) || null,
 
-// =========================
-// UTIL
-// =========================
-const cleanText = (t = "") =>
-  String(t)
-    .replace(/\s+/g, " ")
-    .replace(/[●•\-\._]/g, "")
-    .trim();
+    phone: normalizePhone(
+      session.data.phone ||
+      session.data.phoneNumber ||
+      tool.phone ||
+      ""
+    ) || null,
 
-const requestId = (req) =>
-  req.headers["x-request-id"] || crypto.randomUUID();
+    city: clean(session.data.city) || null,
+    district: clean(session.data.district) || null,
 
-// =========================
-// SAFE JSON PARSE (🔥 FINAL FIX)
-// =========================
-function safeJSONParse(str) {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return null;
-  }
-}
+    budget: clean(session.data.budget) || null,
+    property_type: clean(session.data.propertyType) || null,
 
-// =========================
-// SESSION ENGINE
-// =========================
-async function getSession(id) {
-  try {
-    if (redisAlive) {
-      const v = await redis.get(`s:${id}`);
-      if (v) {
-        const parsed = safeJSONParse(v);
-        if (parsed) return parsed;
-      }
-    }
-  } catch {}
+    intent: clean(tool.intent || session.data.intent) || null,
 
-  return memory.get(id) || null;
-}
+    stage: normalizeStage(
+      tool.stage ||
+      tool.leadStatus ||
+      session.data.stage ||
+      "new"
+    ),
 
-async function saveSession(id, session) {
-  try {
-    session.updatedAt = Date.now();
+    source: "vapi"
+  };
 
-    memory.set(id, session);
+  // =========================
+  // LEAD SCORING (REALISTIC)
+  // =========================
+  let score = 5;
 
-    if (redisAlive) {
-      await redis.set(
-        `s:${id}`,
-        JSON.stringify(session),
-        "EX",
-        SESSION_TTL
-      );
-    }
-  } catch {}
-}
+  if (payload.phone) score += 25;
+  if (payload.full_name) score += 15;
+  if (payload.intent) score += 20;
 
-// =========================
-// TOOL PARSER (ROBUST FINAL)
-// =========================
-function parseTool(req) {
-  try {
-    const msgType = req.body?.message?.type;
+  if (payload.stage === "warm") score += 15;
+  if (payload.stage === "hot") score += 30;
+  if (payload.stage === "appointment") score += 40;
 
-    let tool = null;
+  payload.lead_score = Math.min(score, 100);
 
-    if (typeof msgType === "string" && msgType.includes("tool")) {
-      const call = req.body?.message?.toolCalls?.[0];
-      tool = call?.arguments || call?.function?.arguments || null;
-    }
+  // =========================
+  // VALIDATION
+  // =========================
+  const valid = payload.phone || payload.full_name;
 
-    tool =
-      tool ||
-      req.body?.toolArguments ||
-      req.body?.arguments ||
-      req.body?.data ||
-      req.body?.tool_calls?.[0]?.arguments ||
-      null;
+  const duplicate =
+    Date.now() - (session.lastSavedAt || 0) < 15000;
 
-    if (typeof tool === "string") tool = safeJSONParse(tool);
-    if (Array.isArray(tool)) tool = tool[0];
+  // =========================
+  // SUPABASE WRITE
+  // =========================
+  if (supabase && valid && !duplicate) {
+    session.lastSavedAt = Date.now();
 
-    return tool && typeof tool === "object" ? tool : null;
-  } catch {
-    return null;
-  }
-}
+    try {
+      // 1. UPSERT LEAD
+      const { data: upserted, error } = await supabase
+        .from("leads")
+        .upsert(payload, {
+          onConflict: "phone",
+        })
+        .select("id")
+        .single();
 
-// =========================
-// WEBHOOK
-// =========================
-app.post("/webhook", async (req, res) => {
-  const rid = requestId(req);
-
-  try {
-    if (!req.body || typeof req.body !== "object") {
-      return res.status(400).json({ error: "invalid_body", rid });
-    }
-
-    // =========================
-    // SESSION ID
-    // =========================
-    const sessionId =
-      req.body?.call?.phoneNumber ||
-      req.body?.callId ||
-      req.body?.conversationId ||
-      req.headers["x-vapi-call-id"] ||
-      `anon_${rid}`;
-
-    // =========================
-    // LOCK (FAIL SAFE)
-    // =========================
-    let locked = false;
-
-    if (redisAlive) {
-      locked = await redis.set(
-        `lock:${sessionId}`,
-        "1",
-        "NX",
-        "EX",
-        LOCK_TTL
-      );
-    }
-
-    if (!locked && redisAlive) {
-      return res.json({ ok: true, rid });
-    }
-
-    // =========================
-    // LOAD SESSION (SAFE)
-    // =========================
-    let session = await getSession(sessionId);
-
-    if (!session || typeof session !== "object") {
-      session = {
-        step: 1,
-        data: {},
-        saved: false,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        lastSavedAt: 0,
-      };
-    }
-
-    session.data ||= {};
-
-    // =========================
-    // TOOL FLOW
-    // =========================
-    const tool = parseTool(req);
-
-    if (tool) {
-      session.data = { ...session.data, ...tool };
-      session.updatedAt = Date.now();
-
-      const payload = {
-        full_name:
-          (session.data.fullName || "").toString().slice(0, 120) || null,
-        phone_number:
-          (session.data.phoneNumber || "").toString().slice(0, 30) || null,
-        property_type:
-          (session.data.propertyType || "").toString().slice(0, 60) || null,
-        lead_status: tool.leadStatus || "hot",
-        created_at: new Date().toISOString(),
-      };
-
-      const valid = payload.full_name || payload.phone_number;
-
-      const duplicate =
-        Date.now() - (session.lastSavedAt || 0) < 15000;
-
-      if (supabase && valid && !session.saved && !duplicate) {
-        session.saved = true;
-        session.lastSavedAt = Date.now();
-
-        try {
-          await supabase.from("leads").upsert(payload, {
-            onConflict: "phone_number",
-          });
-        } catch {}
+      if (error) {
+        console.log("❌ LEADS UPSERT ERROR:", error.message);
+        return;
       }
 
-      await saveSession(sessionId, session);
-      return res.json({ ok: true, rid });
+      const leadId = upserted?.id;
+
+      // 2. LOG CALL
+      try {
+        await supabase.from("calls").insert({
+          lead_id: leadId,
+          phone: payload.phone,
+          transcript: session.data.transcript || null,
+          ai_response: session.data.ai_response || null,
+          duration: session.data.duration || null,
+          call_status: "completed",
+          source: "vapi",
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.log("❌ CALL INSERT ERROR:", e.message);
+      }
+
+      session.saved = true;
+    } catch (e) {
+      console.log("❌ SUPABASE ERROR:", e.message);
     }
-
-    // =========================
-    // NORMAL FLOW
-    // =========================
-    const msg = cleanText(req.body?.message?.text || req.body?.message);
-
-    if (!msg) {
-      return res.json({
-        reply: "كيف يمكنني مساعدتك في العقار؟",
-        rid,
-      });
-    }
-
-    if (session.step === 1) {
-      session.data.fullName = msg;
-      session.step = 2;
-    } else if (session.step === 2) {
-      session.data.propertyType = msg;
-      session.step = 3;
-    } else {
-      session.step = 1;
-      session.data = {};
-    }
-
-    await saveSession(sessionId, session);
-
-    const reply =
-      session.step === 2
-        ? "تمام 👍 هل تبحث عن شراء أم إيجار؟"
-        : session.step === 3
-        ? "تمام 👍 سيتم التواصل معك قريباً"
-        : "كيف يمكنني مساعدتك في العقار؟";
-
-    return res.json({ reply, rid });
-  } catch (e) {
-    return res.status(500).json({
-      error: "internal_error",
-      rid,
-    });
   }
-});
 
-// =========================
-// START
-// =========================
-const PORT = process.env.PORT || 3000;
+  // =========================
+  // SAVE SESSION
+  // =========================
+  await saveSession(sessionId, session);
 
-app.listen(PORT, () => {
-  console.log(`🚀 SALIH AI v10.1 (ULTIMATE) running on ${PORT}`);
-});
+  return res.json({ ok: true, rid });
+}
