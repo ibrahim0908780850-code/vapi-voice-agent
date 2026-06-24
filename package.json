@@ -9,14 +9,11 @@
     "dev": "node index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "express": "^5.1.0",
     "ioredis": "^5.4.1"
   }
-}
-"engines": {
-  "node": "20.x"
 }
