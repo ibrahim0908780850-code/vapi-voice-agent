@@ -39,7 +39,7 @@ const memoryQueue = [];
 const seen = new Map();
 
 // =========================
-// QUEUE PUSH
+// QUEUE
 // =========================
 function pushJob(job) {
   try {
@@ -56,7 +56,7 @@ function pushJob(job) {
 }
 
 // =========================
-// TOOL PARSER
+// TOOL PARSER (VAPI SAFE)
 // =========================
 function parseTool(req) {
   try {
@@ -70,7 +70,6 @@ function parseTool(req) {
 
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    // 🔥 safety guard
     if (!parsed || typeof parsed !== "object") return null;
 
     return parsed;
@@ -85,11 +84,11 @@ function parseTool(req) {
 function normalizeTool(t = {}) {
   return {
     full_name: t.fullName || t.full_name || t.name || "",
-    phone: t.phone || t.phoneNumber || t.phone_number || "",
+    phone: t.phone || t.phoneNumber || "",
     city: t.city || "",
     district: t.district || "",
     budget: t.budget || "",
-    property_type: t.propertyType || t.property_type || "",
+    property_type: t.propertyType || "",
     intent: t.intent || "",
     stage: t.stage || "new",
   };
@@ -101,7 +100,7 @@ function normalizeTool(t = {}) {
 function scoreLead(d) {
   let score = 10;
 
-  if (d.phone?.length > 5) score += 35;
+  if (d.phone && d.phone.length > 5) score += 35;
   if (d.full_name) score += 20;
   if (d.city) score += 10;
   if (d.intent) score += 15;
@@ -123,19 +122,18 @@ function decideLead(score) {
 }
 
 // =========================
-// PROCESS JOB
+// PROCESS JOB (WORKER)
 // =========================
 async function processJob(job) {
   if (!supabase || !job?.tool) return;
 
   const tool = normalizeTool(job.tool);
 
-  // 🔥 FIXED DEDUP
+  // safe dedup
   if (!tool.phone || tool.phone.length < 5) return;
 
   if (seen.has(tool.phone)) return;
   seen.set(tool.phone, Date.now());
-
   setTimeout(() => seen.delete(tool.phone), 15000);
 
   const score = scoreLead(tool);
@@ -162,14 +160,13 @@ async function processJob(job) {
         source: "vapi",
       });
     }
-
   } catch (err) {
     console.log("❌ Worker Error:", err.message);
   }
 }
 
 // =========================
-// WORKER
+// WORKER LOOP
 // =========================
 async function startWorker() {
   console.log("⚙️ Worker started...");
@@ -185,27 +182,25 @@ async function startWorker() {
       } else {
         job = memoryQueue.shift();
         if (!job) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 500));
           continue;
         }
       }
 
       await processJob(job);
-
     } catch (err) {
       console.log("🔥 Worker recovered:", err.message);
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
 
 // =========================
-// WEBHOOK (VAPI SMART RESPONSE)
+// WEBHOOK (🔥 FIXED VAPI RESPONSE)
 // =========================
 app.post("/webhook", (req, res) => {
   try {
     const tool = parseTool(req);
-
     const norm = normalizeTool(tool || {});
     const score = scoreLead(norm);
     const stage = decideLead(score);
@@ -219,8 +214,9 @@ app.post("/webhook", (req, res) => {
 
     if (tool) pushJob(job);
 
+    // 🔥 IMPORTANT FIX: VAPI COMPATIBLE RESPONSE
     return res.json({
-      result: {
+      result: JSON.stringify({
         success: true,
         stage,
         score,
@@ -229,36 +225,34 @@ app.post("/webhook", (req, res) => {
             ? "book_visit"
             : stage === "warm"
             ? "qualify_lead"
-            : "ask_budget_and_location",
-
+            : "ask_more_info",
         message:
           stage === "hot"
-            ? "عميل جاهز للحجز الآن، اقترح زيارة مباشرة"
+            ? "عميل جاهز للحجز الآن"
             : stage === "warm"
-            ? "عميل مهتم، اجمع تفاصيل أكثر قبل الحجز"
-            : "يحتاج معلومات إضافية لتأهيله"
-      }
+            ? "عميل مهتم ويحتاج تأهيل"
+            : "نحتاج معلومات أكثر"
+      }),
     });
-
-  } catch {
+  } catch (e) {
     return res.status(200).json({
-      result: {
+      result: JSON.stringify({
         success: false,
-        message: "fallback response"
-      }
+        message: "fallback response",
+      }),
     });
   }
 });
 
 // =========================
-// HEALTH
+// HEALTH CHECK
 // =========================
 app.get("/", (req, res) => {
   res.send("SALIH AI FULL SYSTEM RUNNING 🚀");
 });
 
 // =========================
-// START
+// START SERVER
 // =========================
 app.listen(PORT, () => {
   console.log("🚀 SALIH AI RUNNING ON PORT", PORT);
