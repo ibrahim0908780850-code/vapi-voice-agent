@@ -17,3 +17,6 @@
     "ioredis": "^5.4.1"
   }
 }
+"engines": {
+  "node": "20.x"
+}
