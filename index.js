@@ -28,8 +28,8 @@ const supabase =
 // =========================
 let redis = null;
 
-try {
-  if (REDIS_URL) {
+if (REDIS_URL) {
+  try {
     redis = new Redis(REDIS_URL, {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
@@ -39,9 +39,9 @@ try {
     redis.on("error", (e) => {
       console.log("⚠️ Redis error:", e.message);
     });
+  } catch (e) {
+    console.log("⚠️ Redis disabled");
   }
-} catch {
-  console.log("⚠️ Redis disabled");
 }
 
 // =========================
@@ -60,13 +60,12 @@ function normalizeTool(t = {}) {
     city: t.area || "",
     budget: t.budget || "",
     intent: t.intent || "",
-    property_type: t.propertyType || "",
-    notes: t.notes || ""
+    property_type: t.propertyType || ""
   };
 }
 
 // =========================
-// SCORE ENGINE
+// SCORE
 // =========================
 function scoreLead(d) {
   let score = 10;
@@ -81,7 +80,7 @@ function scoreLead(d) {
 }
 
 // =========================
-// STAGE ENGINE
+// STAGE
 // =========================
 function decideLead(score) {
   if (score >= 80) return "hot";
@@ -151,11 +150,11 @@ async function processJob(job) {
           budget: tool.budget,
           intent: tool.intent,
           property_type: tool.property_type,
-          notes: tool.notes,
 
-          // ✅ FIXED FIELDS مطابق للـ schema
+          // ✅ المهم: هذه هي الأعمدة الموجودة فعلاً عندك
           stage: stage,
-          lead_score: score
+          lead_score: score,
+          summary: ""
         },
         { onConflict: "phone" }
       )
@@ -179,37 +178,7 @@ async function processJob(job) {
 }
 
 // =========================
-// WORKER LOOP
-// =========================
-async function startWorker() {
-  console.log("⚙️ Worker started...");
-
-  while (true) {
-    try {
-      let job;
-
-      if (redis) {
-        const res = await redis.brpop("vapi_jobs", 5);
-        if (!res) continue;
-        job = JSON.parse(res[1]);
-      } else {
-        job = memoryQueue.shift();
-        if (!job) {
-          await new Promise((r) => setTimeout(r, 500));
-          continue;
-        }
-      }
-
-      await processJob(job);
-    } catch (e) {
-      console.log("Worker error:", e.message);
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
-}
-
-// =========================
-// WEBHOOK (VAPI FIXED)
+// WEBHOOK
 // =========================
 app.post("/webhook", (req, res) => {
   try {
@@ -229,15 +198,17 @@ app.post("/webhook", (req, res) => {
     const stage = decideLead(score);
 
     const toolCallId =
-      req.body?.message?.toolCalls?.[0]?.id ||
-      req.body?.message?.toolCalls?.[0]?.function?.id ||
-      crypto.randomUUID();
+      req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
     return res.json({
       results: [
         {
           toolCallId,
-          result: `stage=${stage},score=${score}`
+          result: JSON.stringify({
+            success: true,
+            stage,
+            score
+          })
         }
       ]
     });
@@ -247,7 +218,9 @@ app.post("/webhook", (req, res) => {
       results: [
         {
           toolCallId: "error",
-          result: "fallback"
+          result: JSON.stringify({
+            success: false
+          })
         }
       ]
     });
@@ -255,16 +228,8 @@ app.post("/webhook", (req, res) => {
 });
 
 // =========================
-// HEALTH CHECK
-// =========================
-app.get("/", (req, res) => {
-  res.send("SALIH AI RUNNING 🚀");
-});
-
-// =========================
 // START
 // =========================
 app.listen(port, () => {
-  console.log("🚀 Running on port", port);
-  startWorker();
+  console.log("🚀 SALIH AI RUNNING ON", port);
 });
