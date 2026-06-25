@@ -10,8 +10,10 @@ const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   REDIS_URL,
-  PORT = 3000,
+  PORT
 } = process.env;
+
+const port = PORT || 3000;
 
 // =========================
 // SUPABASE
@@ -22,98 +24,65 @@ const supabase =
     : null;
 
 // =========================
-// REDIS
+// REDIS SAFE
 // =========================
-const redis = REDIS_URL
-  ? new Redis(REDIS_URL, {
-      maxRetriesPerRequest: 2,
+let redis = null;
+
+try {
+  if (REDIS_URL) {
+    redis = new Redis(REDIS_URL, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
-      reconnectOnError: () => true,
-    })
-  : null;
+    });
+
+    redis.on("error", (e) => {
+      console.log("⚠️ Redis error:", e.message);
+    });
+  }
+} catch {
+  console.log("⚠️ Redis disabled");
+}
 
 // =========================
-// MEMORY QUEUE
+// MEMORY FALLBACK
 // =========================
 const memoryQueue = [];
 const seen = new Map();
-
-// =========================
-// QUEUE
-// =========================
-function pushJob(job) {
-  try {
-    const payload = JSON.stringify(job);
-
-    if (redis && redis.status === "ready") {
-      redis.lpush("vapi_jobs", payload);
-    } else {
-      memoryQueue.push(job);
-    }
-  } catch (e) {
-    console.log("queue error:", e.message);
-  }
-}
-
-// =========================
-// TOOL PARSER (VAPI SAFE)
-// =========================
-function parseTool(req) {
-  try {
-    const raw =
-      req.body?.message?.toolCalls?.[0]?.function?.arguments ||
-      req.body?.message?.toolCalls?.[0]?.arguments ||
-      req.body?.toolArguments ||
-      req.body?.arguments;
-
-    if (!raw) return null;
-
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-    if (!parsed || typeof parsed !== "object") return null;
-
-    return parsed;
-  } catch {
-    return null;
-  }
-}
 
 // =========================
 // NORMALIZER
 // =========================
 function normalizeTool(t = {}) {
   return {
-    full_name: t.fullName || t.full_name || t.name || "",
-    phone: t.phone || t.phoneNumber || "",
-    city: t.city || "",
-    district: t.district || "",
+    full_name: t.fullName || "",
+    phone: t.phoneNumber || "",
+    city: t.area || "",
     budget: t.budget || "",
-    property_type: t.propertyType || "",
     intent: t.intent || "",
-    stage: t.stage || "new",
+    property_type: t.propertyType || "",
+    notes: t.notes || "",
+    lead_status: t.leadStatus || "",
   };
 }
 
 // =========================
-// SCORE ENGINE
+// SCORE
 // =========================
 function scoreLead(d) {
   let score = 10;
 
-  if (d.phone && d.phone.length > 5) score += 35;
+  if (d.phone) score += 40;
   if (d.full_name) score += 20;
+  if (d.intent) score += 10;
   if (d.city) score += 10;
-  if (d.intent) score += 15;
-  if (d.budget) score += 10;
-
-  if (d.stage === "warm") score += 10;
-  if (d.stage === "hot") score += 20;
+  if (d.property_type) score += 10;
 
   return Math.min(score, 100);
 }
 
 // =========================
-// DECISION ENGINE
+// STAGE
 // =========================
 function decideLead(score) {
   if (score >= 80) return "hot";
@@ -122,31 +91,76 @@ function decideLead(score) {
 }
 
 // =========================
-// PROCESS JOB (WORKER)
+// QUEUE SAFE PUSH
+// =========================
+function pushJob(job) {
+  const payload = JSON.stringify(job);
+
+  if (redis) {
+    redis
+      .lpush("vapi_jobs", payload)
+      .catch(() => memoryQueue.push(job));
+  } else {
+    memoryQueue.push(job);
+  }
+}
+
+// =========================
+// ROBUST PARSER
+// =========================
+function parseTool(req) {
+  try {
+    const body = req.body || {};
+
+    const raw =
+      body?.message?.toolCalls?.[0]?.function?.arguments ||
+      body?.message?.toolCalls?.[0]?.arguments ||
+      body?.toolArguments ||
+      body?.arguments;
+
+    if (!raw) return null;
+
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
+}
+
+// =========================
+// WORKER
 // =========================
 async function processJob(job) {
   if (!supabase || !job?.tool) return;
 
   const tool = normalizeTool(job.tool);
 
-  // safe dedup
-  if (!tool.phone || tool.phone.length < 5) return;
+  if (!tool.phone || tool.phone.length < 6) return;
 
   if (seen.has(tool.phone)) return;
-  seen.set(tool.phone, Date.now());
+  seen.set(tool.phone, true);
   setTimeout(() => seen.delete(tool.phone), 15000);
 
   const score = scoreLead(tool);
   const stage = decideLead(score);
 
-  tool.lead_score = score;
-  tool.stage = stage;
-
   try {
     const { data, error } = await supabase
       .from("leads")
-      .upsert(tool, { onConflict: "phone" })
-      .select("id")
+      .upsert(
+        {
+          full_name: tool.full_name,
+          phone: tool.phone,
+          city: tool.city,
+          budget: tool.budget,
+          intent: tool.intent,
+          property_type: tool.property_type,
+          notes: tool.notes,
+          lead_status: stage,
+          score
+        },
+        { onConflict: "phone" }
+      )
+      .select()
       .single();
 
     if (error) throw error;
@@ -155,18 +169,18 @@ async function processJob(job) {
       await supabase.from("calls").insert({
         lead_id: data.id,
         phone: tool.phone,
-        transcript: job.body?.message?.text || null,
+        transcript: "",
         call_status: "completed",
-        source: "vapi",
+        source: "vapi"
       });
     }
   } catch (err) {
-    console.log("❌ Worker Error:", err.message);
+    console.log("DB Error:", err.message);
   }
 }
 
 // =========================
-// WORKER LOOP
+// WORKER LOOP SAFE
 // =========================
 async function startWorker() {
   console.log("⚙️ Worker started...");
@@ -175,7 +189,7 @@ async function startWorker() {
     try {
       let job;
 
-      if (redis && redis.status === "ready") {
+      if (redis) {
         const res = await redis.brpop("vapi_jobs", 5);
         if (!res) continue;
         job = JSON.parse(res[1]);
@@ -188,73 +202,63 @@ async function startWorker() {
       }
 
       await processJob(job);
-    } catch (err) {
-      console.log("🔥 Worker recovered:", err.message);
+    } catch (e) {
+      console.log("Worker error:", e.message);
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
 
 // =========================
-// WEBHOOK (🔥 FIXED VAPI RESPONSE)
+// WEBHOOK
 // =========================
 app.post("/webhook", (req, res) => {
   try {
     const tool = parseTool(req);
+
+    if (tool) {
+      pushJob({
+        id: crypto.randomUUID(),
+        tool,
+        body: req.body,
+        ts: Date.now()
+      });
+    }
+
     const norm = normalizeTool(tool || {});
     const score = scoreLead(norm);
     const stage = decideLead(score);
 
-    const job = {
-      id: crypto.randomUUID(),
-      tool,
-      body: req.body,
-      ts: Date.now(),
-    };
-
-    if (tool) pushJob(job);
-
-    // 🔥 IMPORTANT FIX: VAPI COMPATIBLE RESPONSE
     return res.json({
-      result: JSON.stringify({
-        success: true,
-        stage,
-        score,
-        next_action:
-          stage === "hot"
-            ? "book_visit"
-            : stage === "warm"
-            ? "qualify_lead"
-            : "ask_more_info",
-        message:
-          stage === "hot"
-            ? "عميل جاهز للحجز الآن"
-            : stage === "warm"
-            ? "عميل مهتم ويحتاج تأهيل"
-            : "نحتاج معلومات أكثر"
-      }),
+      success: true,
+      stage,
+      score,
+      message:
+        stage === "hot"
+          ? "عميل جاهز للحجز"
+          : stage === "warm"
+          ? "عميل مهتم"
+          : "نحتاج معلومات أكثر"
     });
-  } catch (e) {
-    return res.status(200).json({
-      result: JSON.stringify({
-        success: false,
-        message: "fallback response",
-      }),
+  } catch {
+    return res.json({
+      success: false,
+      message: "fallback"
     });
   }
 });
 
 // =========================
-// HEALTH CHECK
+// HEALTH
 // =========================
 app.get("/", (req, res) => {
-  res.send("SALIH AI FULL SYSTEM RUNNING 🚀");
+  res.send("SALIH AI RUNNING 🚀");
 });
 
 // =========================
-// START SERVER
+// START
 // =========================
-app.listen(PORT, () => {
-  console.log("🚀 SALIH AI RUNNING ON PORT", PORT);
+app.listen(port, () => {
+  console.log("🚀 Running on port", port);
   startWorker();
 });
