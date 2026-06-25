@@ -61,7 +61,7 @@ function normalizeTool(t = {}) {
     budget: t.budget || "",
     intent: t.intent || "",
     property_type: t.propertyType || "",
-    notes: t.notes || "",
+    notes: t.notes || ""
   };
 }
 
@@ -81,7 +81,7 @@ function scoreLead(d) {
 }
 
 // =========================
-// STAGE
+// STAGE ENGINE
 // =========================
 function decideLead(score) {
   if (score >= 80) return "hot";
@@ -152,8 +152,10 @@ async function processJob(job) {
           intent: tool.intent,
           property_type: tool.property_type,
           notes: tool.notes,
-          lead_status: stage,
-          score
+
+          // ✅ FIXED FIELDS مطابق للـ schema
+          stage: stage,
+          lead_score: score
         },
         { onConflict: "phone" }
       )
@@ -207,7 +209,7 @@ async function startWorker() {
 }
 
 // =========================
-// WEBHOOK (FIXED FOR VAPI)
+// WEBHOOK (VAPI FIXED)
 // =========================
 app.post("/webhook", (req, res) => {
   try {
@@ -227,7 +229,9 @@ app.post("/webhook", (req, res) => {
     const stage = decideLead(score);
 
     const toolCallId =
-      req.body?.message?.toolCalls?.[0]?.id || "unknown";
+      req.body?.message?.toolCalls?.[0]?.id ||
+      req.body?.message?.toolCalls?.[0]?.function?.id ||
+      crypto.randomUUID();
 
     return res.json({
       results: [
@@ -258,7 +262,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// START SERVER
+// START
 // =========================
 app.listen(port, () => {
   console.log("🚀 Running on port", port);
