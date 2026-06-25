@@ -1,59 +1,44 @@
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import Redis from "ioredis";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
-const {
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  REDIS_URL,
-  PORT
-} = process.env;
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
 
 const port = PORT || 3000;
 
-// =========================
-// SUPABASE
-// =========================
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
 // =========================
-// REDIS SAFE
+// PARSE VAPI TOOL
 // =========================
-let redis = null;
-
-if (REDIS_URL) {
+function parseTool(req) {
   try {
-    redis = new Redis(REDIS_URL, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-    });
+    const body = req.body || {};
 
-    redis.on("error", (e) => {
-      console.log("⚠️ Redis error:", e.message);
-    });
-  } catch (e) {
-    console.log("⚠️ Redis disabled");
+    const raw =
+      body?.message?.toolCalls?.[0]?.function?.arguments ||
+      body?.message?.toolCalls?.[0]?.arguments ||
+      body?.toolArguments ||
+      body?.arguments;
+
+    if (!raw) return null;
+
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
   }
 }
 
 // =========================
-// MEMORY QUEUE
+// NORMALIZE
 // =========================
-const memoryQueue = [];
-const seen = new Map();
-
-// =========================
-// NORMALIZER
-// =========================
-function normalizeTool(t = {}) {
+function normalize(t = {}) {
   return {
     full_name: t.fullName || "",
     phone: t.phoneNumber || "",
@@ -80,130 +65,69 @@ function scoreLead(d) {
 }
 
 // =========================
-// STAGE
+// STAGE (MAP TO YOUR DB)
 // =========================
-function decideLead(score) {
+function decideStage(score) {
   if (score >= 80) return "hot";
   if (score >= 50) return "warm";
-  return "cold";
+  return "new"; // مهم: مطابق للـ CHECK في جدولك
 }
 
 // =========================
-// QUEUE
+// WEBHOOK
 // =========================
-function pushJob(job) {
-  const payload = JSON.stringify(job);
-
-  if (redis) {
-    redis.lpush("vapi_jobs", payload).catch(() => memoryQueue.push(job));
-  } else {
-    memoryQueue.push(job);
-  }
-}
-
-// =========================
-// PARSER
-// =========================
-function parseTool(req) {
+app.post("/webhook", async (req, res) => {
   try {
-    const body = req.body || {};
+    const tool = parseTool(req);
+    const data = normalize(tool || {});
 
-    const raw =
-      body?.message?.toolCalls?.[0]?.function?.arguments ||
-      body?.message?.toolCalls?.[0]?.arguments ||
-      body?.toolArguments ||
-      body?.arguments;
+    if (!supabase) {
+      return res.json({ success: false, msg: "no supabase" });
+    }
 
-    if (!raw) return null;
+    const score = scoreLead(data);
+    const stage = decideStage(score);
 
-    return typeof raw === "string" ? JSON.parse(raw) : raw;
-  } catch {
-    return null;
-  }
-}
-
-// =========================
-// WORKER
-// =========================
-async function processJob(job) {
-  if (!supabase || !job?.tool) return;
-
-  const tool = normalizeTool(job.tool);
-
-  if (!tool.phone || tool.phone.length < 6) return;
-
-  if (seen.has(tool.phone)) return;
-  seen.set(tool.phone, true);
-  setTimeout(() => seen.delete(tool.phone), 15000);
-
-  const score = scoreLead(tool);
-  const stage = decideLead(score);
-
-  try {
-    const { data, error } = await supabase
+    // 🔥 IMPORTANT: ONLY EXISTING COLUMNS
+    const { data: lead, error } = await supabase
       .from("leads")
       .upsert(
         {
-          full_name: tool.full_name,
-          phone: tool.phone,
-          city: tool.city,
-          budget: tool.budget,
-          intent: tool.intent,
-          property_type: tool.property_type,
+          full_name: data.full_name,
+          phone: data.phone,
+          city: data.city,
+          budget: data.budget,
+          intent: data.intent,
+          property_type: data.property_type,
 
-          // ✅ المهم: هذه هي الأعمدة الموجودة فعلاً عندك
           stage: stage,
-          lead_score: score,
-          summary: ""
+          lead_score: score
         },
         { onConflict: "phone" }
       )
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.log("DB ERROR:", error.message);
+      return res.json({ success: false, error: error.message });
+    }
 
-    if (data?.id) {
+    if (lead?.id) {
       await supabase.from("calls").insert({
-        lead_id: data.id,
-        phone: tool.phone,
+        lead_id: lead.id,
+        phone: data.phone,
         transcript: "",
         call_status: "completed",
         source: "vapi"
       });
     }
-  } catch (err) {
-    console.log("DB Error:", err.message);
-  }
-}
-
-// =========================
-// WEBHOOK
-// =========================
-app.post("/webhook", (req, res) => {
-  try {
-    const tool = parseTool(req);
-
-    if (tool) {
-      pushJob({
-        id: crypto.randomUUID(),
-        tool,
-        body: req.body,
-        ts: Date.now()
-      });
-    }
-
-    const norm = normalizeTool(tool || {});
-    const score = scoreLead(norm);
-    const stage = decideLead(score);
-
-    const toolCallId =
-      req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
     return res.json({
       results: [
         {
-          toolCallId,
+          toolCallId:
+            req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID(),
           result: JSON.stringify({
             success: true,
             stage,
@@ -212,24 +136,22 @@ app.post("/webhook", (req, res) => {
         }
       ]
     });
-
-  } catch {
+  } catch (e) {
     return res.json({
       results: [
         {
           toolCallId: "error",
-          result: JSON.stringify({
-            success: false
-          })
+          result: JSON.stringify({ success: false })
         }
       ]
     });
   }
 });
 
-// =========================
-// START
-// =========================
+app.get("/", (req, res) => {
+  res.send("SALIH AI CLEAN RUNNING 🚀");
+});
+
 app.listen(port, () => {
-  console.log("🚀 SALIH AI RUNNING ON", port);
+  console.log("🚀 Running on port", port);
 });
