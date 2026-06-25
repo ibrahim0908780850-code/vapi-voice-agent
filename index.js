@@ -115,6 +115,14 @@ function normalize(t = {}, req = {}) {
 }
 
 // =========================
+// 🆕 DATA QUALITY CHECK
+// =========================
+function hasMinimumData(data) {
+  // يشترط على الأقل الاسم ورقم الهاتف
+  return data.full_name && data.phone;
+}
+
+// =========================
 // INTENT DETECTION
 // =========================
 function isBuyIntent(text = "") {
@@ -187,10 +195,33 @@ app.post("/webhook", async (req, res) => {
     log("📋 Normalized data:", JSON.stringify(data, null, 2));
 
     // =========================
-    // NO DATA LOSS POLICY
+    // 🆕 MINIMUM DATA CHECK
+    // =========================
+    if (!hasMinimumData(data)) {
+      log("⚠️ Missing minimum data (name + phone) → skipping save");
+      
+      // إذا الرقم موجود احفظه، إذا لا skip كامل
+      if (!data.phone && !data.full_name) {
+        return res.json({
+          results: [
+            {
+              toolCallId,
+              result: JSON.stringify({
+                success: false,
+                error: "insufficient_data",
+                message: "البيانات غير كافية: الاسم ورقم الهاتف مفقودان"
+              })
+            }
+          ]
+        });
+      }
+    }
+
+    // =========================
+    // NO DATA LOSS POLICY (رقم افتراضي فقط إذا الرقم مفقود)
     // =========================
     if (!data.phone) {
-      log("⚠️ Missing phone → saving partial lead with generated ID");
+      log("⚠️ Missing phone → using placeholder");
       data.phone = "unknown_" + Date.now();
     }
 
@@ -302,14 +333,15 @@ app.post("/webhook", async (req, res) => {
 // HEALTH CHECK
 // =========================
 app.get("/", (req, res) => {
-  res.send("🚀 SALIH AI ULTIMATE V2 RUNNING");
+  res.send("🚀 SALIH AI ULTIMATE V3 RUNNING");
 });
 
 // =========================
 // START SERVER
 // =========================
 app.listen(port, () => {
-  console.log(`🚀 SALIH AI V2 running on port ${port}`);
+  console.log(`🚀 SALIH AI V3 running on port ${port}`);
   console.log(`📍 Supabase: ${SUPABASE_URL ? 'Configured ✅' : '❌ Missing'}`);
   console.log(`🔑 Service Key: ${SUPABASE_SERVICE_ROLE_KEY ? 'Present ✅' : '❌ Missing'}`);
+  console.log(`🛡️ Minimum data filter: ACTIVE`);
 });
