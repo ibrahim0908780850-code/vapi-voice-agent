@@ -9,7 +9,13 @@ const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
 const port = PORT || 3000;
 
 // =========================
-// SUPABASE
+// DEBUG SAFE
+// =========================
+const DEBUG = process.env.DEBUG === "true";
+const log = (...args) => DEBUG && console.log("🔥", ...args);
+
+// =========================
+// SUPABASE SAFE INIT
 // =========================
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
@@ -17,97 +23,37 @@ const supabase =
     : null;
 
 // =========================
-// DEBUG LOGGER
-// =========================
-function log(...args) {
-  console.log("🔥", ...args);
-}
-
-// =========================
-// 🆕 PARSER V2 - يلتقط البيانات من أي مكان يرسله Vapi
+// TOOL PARSER SAFE
 // =========================
 function parseTool(req) {
   try {
-    // 1. المحاولة الأولى: toolCalls (الطريقة القديمة)
-    const toolCalls = req.body?.message?.toolCalls;
-    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-      const call = toolCalls[0];
-      let raw = call?.function?.arguments ?? call?.arguments ?? null;
-      
-      if (raw) {
-        if (typeof raw === "string") {
-          try {
-            const parsed = JSON.parse(raw);
-            log("✅ Data extracted from toolCalls (string)");
-            return parsed;
-          } catch {
-            log("⚠️ Failed to parse toolCalls string");
-          }
-        } else {
-          log("✅ Data extracted from toolCalls (object)");
-          return raw;
-        }
-      }
-    }
+    const calls = req.body?.message?.toolCalls;
+    if (!Array.isArray(calls) || calls.length === 0) return {};
 
-    // 2. المحاولة الثانية: Vapi يرسل مباشرة في message
-    const msg = req.body?.message;
-    if (msg && typeof msg === "object") {
-      if (msg.fullName || msg.phoneNumber || msg.intent) {
-        log("✅ Data found directly in message");
-        return {
-          fullName: msg.fullName,
-          phoneNumber: msg.phoneNumber,
-          area: msg.area,
-          budget: msg.budget,
-          intent: msg.intent,
-          propertyType: msg.propertyType
-        };
-      }
-    }
+    const raw =
+      calls[0]?.function?.arguments ||
+      calls[0]?.arguments ||
+      calls[0]?.function?.args;
 
-    // 3. المحاولة الثالثة: مباشرة في جسم الطلب
-    const body = req.body;
-    if (body && typeof body === "object") {
-      if (body.fullName || body.phoneNumber || body.intent) {
-        log("✅ Data found directly in body root");
-        return {
-          fullName: body.fullName,
-          phoneNumber: body.phoneNumber,
-          area: body.area,
-          budget: body.budget,
-          intent: body.intent,
-          propertyType: body.propertyType
-        };
-      }
-    }
-
-    log("⚠️ No data found in any expected location");
-    log("📦 Full body:", JSON.stringify(req.body, null, 2));
-    return {};
-    
-  } catch (e) {
-    log("❌ PARSE ERROR:", e.message);
+    return typeof raw === "string" ? JSON.parse(raw) : raw || {};
+  } catch {
     return {};
   }
 }
 
 // =========================
-// NORMALIZATION (ROBUST)
+// NORMALIZE
 // =========================
 function normalize(t = {}, req = {}) {
   return {
     full_name: (t.fullName || "").trim(),
-
     phone:
       (t.phoneNumber ||
         t.phone ||
-        t.callerNumber ||
         req.body?.message?.customer?.phone ||
-        req.body?.customer?.number ||
         "").trim(),
 
-    city: (t.area || "").trim(),
+    city: (t.area || t.city || "").trim(),
     budget: (t.budget || "").trim(),
     intent: (t.intent || "").trim(),
     property_type: (t.propertyType || "").trim()
@@ -115,15 +61,7 @@ function normalize(t = {}, req = {}) {
 }
 
 // =========================
-// 🆕 DATA QUALITY CHECK
-// =========================
-function hasMinimumData(data) {
-  // يشترط على الأقل الاسم ورقم الهاتف
-  return data.full_name && data.phone;
-}
-
-// =========================
-// INTENT DETECTION
+// SCORE + STAGE
 // =========================
 function isBuyIntent(text = "") {
   const t = text.toLowerCase();
@@ -131,31 +69,22 @@ function isBuyIntent(text = "") {
     t.includes("شراء") ||
     t.includes("buy") ||
     t.includes("ابغى") ||
-    t.includes("أبغى") ||
     t.includes("اشتري")
   );
 }
 
-// =========================
-// SCORING ENGINE
-// =========================
 function scoreLead(d) {
   let score = 0;
-
   if (isBuyIntent(d.intent)) score += 45;
   if (d.budget) score += 20;
   if (d.property_type) score += 15;
   if (d.city) score += 10;
   if (d.full_name) score += 10;
   if (d.phone) score += 5;
-
   return Math.min(score, 100);
 }
 
-// =========================
-// STAGE ENGINE
-// =========================
-function decideStage(score) {
+function stage(score) {
   if (score >= 85) return "hot";
   if (score >= 60) return "warm";
   if (score >= 30) return "new";
@@ -163,77 +92,35 @@ function decideStage(score) {
 }
 
 // =========================
-// WEBHOOK
+// WEBHOOK (VAPI → CRM)
 // =========================
 app.post("/webhook", async (req, res) => {
   const toolCallId =
     req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
   try {
-    log("🚀 WEBHOOK HIT");
-    log("📦 FULL BODY:", JSON.stringify(req.body, null, 2));
-
     if (!supabase) {
-      log("❌ Supabase not configured");
       return res.json({
         results: [
           {
             toolCallId,
-            result: JSON.stringify({
-              success: false,
-              error: "supabase_not_configured"
-            })
+            result: JSON.stringify({ error: "no_db" })
           }
         ]
       });
     }
 
     const tool = parseTool(req);
-    log("🔧 Parsed tool data:", JSON.stringify(tool, null, 2));
-    
     const data = normalize(tool, req);
-    log("📋 Normalized data:", JSON.stringify(data, null, 2));
 
-    // =========================
-    // 🆕 MINIMUM DATA CHECK
-    // =========================
-    if (!hasMinimumData(data)) {
-      log("⚠️ Missing minimum data (name + phone) → skipping save");
-      
-      // إذا الرقم موجود احفظه، إذا لا skip كامل
-      if (!data.phone && !data.full_name) {
-        return res.json({
-          results: [
-            {
-              toolCallId,
-              result: JSON.stringify({
-                success: false,
-                error: "insufficient_data",
-                message: "البيانات غير كافية: الاسم ورقم الهاتف مفقودان"
-              })
-            }
-          ]
-        });
-      }
-    }
-
-    // =========================
-    // NO DATA LOSS POLICY (رقم افتراضي فقط إذا الرقم مفقود)
-    // =========================
     if (!data.phone) {
-      log("⚠️ Missing phone → using placeholder");
-      data.phone = "unknown_" + Date.now();
+      data.phone = `unknown_${crypto.randomUUID()}`;
     }
 
     const score = scoreLead(data);
-    const stage = decideStage(score);
-    
-    log("🎯 Score:", score, "| Stage:", stage);
+    const leadStage = stage(score);
 
-    // =========================
-    // UPSERT LEAD
-    // =========================
-    const { data: lead, error } = await supabase
+    const { data: leads, error } = await supabase
       .from("leads")
       .upsert(
         {
@@ -244,59 +131,35 @@ app.post("/webhook", async (req, res) => {
           intent: data.intent,
           property_type: data.property_type,
           lead_score: score,
-          stage,
-          source: "vapi",
+          stage: leadStage,
+          status: leadStage,
           updated_at: new Date().toISOString()
         },
         { onConflict: "phone" }
       )
-      .select()
-      .single();
+      .select();
 
-    if (error) {
-      log("❌ DB ERROR:", error.message);
-      log("❌ Full error:", JSON.stringify(error, null, 2));
+    if (error || !leads?.length) {
+      log("DB ERROR:", error?.message);
 
       return res.json({
         results: [
           {
             toolCallId,
-            result: JSON.stringify({
-              success: false,
-              error: "db_error",
-              details: error.message
-            })
+            result: JSON.stringify({ error: "db_error" })
           }
         ]
       });
     }
 
-    log("✅ Lead saved:", lead.id);
+    const lead = leads[0];
 
-    // =========================
-    // CALL LOG (SAFE)
-    // =========================
-    try {
-      await supabase.from("calls").insert({
-        lead_id: lead.id,
-        phone: data.phone,
-        transcript: "",
-        ai_response: "",
-        duration: 0,
-        call_status: "completed",
-        source: "vapi",
-        created_at: new Date().toISOString()
-      });
-      log("✅ Call log created");
-    } catch (e) {
-      log("⚠️ CALL LOG ERROR:", e.message);
-    }
+    await supabase.from("crm_activities").insert({
+      lead_id: lead.id,
+      action: "lead_created",
+      note: `Score ${score}`
+    });
 
-    // =========================
-    // RESPONSE TO VAPI
-    // =========================
-    log("✅ Sending success response to Vapi");
-    
     return res.json({
       results: [
         {
@@ -304,25 +167,20 @@ app.post("/webhook", async (req, res) => {
           result: JSON.stringify({
             success: true,
             lead_id: lead.id,
-            stage,
+            stage: leadStage,
             score
           })
         }
       ]
     });
-
   } catch (e) {
-    log("💥 SERVER ERROR:", e.message);
-    log("💥 Stack:", e.stack);
+    log("SERVER ERROR:", e.message);
 
     return res.json({
       results: [
         {
           toolCallId,
-          result: JSON.stringify({
-            success: false,
-            error: "internal_error"
-          })
+          result: JSON.stringify({ error: "internal_error" })
         }
       ]
     });
@@ -330,18 +188,117 @@ app.post("/webhook", async (req, res) => {
 });
 
 // =========================
-// HEALTH CHECK
+// CRM API SAFE
 // =========================
-app.get("/", (req, res) => {
-  res.send("🚀 SALIH AI ULTIMATE V3 RUNNING");
+
+app.get("/api/leads", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json(data || []);
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/leads/status", async (req, res) => {
+  try {
+    const { id, status } = req.body;
+
+    const { error } = await supabase
+      .from("leads")
+      .update({ status })
+      .eq("id", id);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/leads/note", async (req, res) => {
+  try {
+    const { lead_id, note } = req.body;
+
+    await supabase.from("crm_activities").insert({
+      lead_id,
+      action: "note",
+      note
+    });
+
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "server_error" });
+  }
 });
 
 // =========================
-// START SERVER
+// CRM DASHBOARD (SAFE UI)
+// =========================
+app.get("/crm", async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const rows = (data || [])
+      .map(
+        (l) => `
+        <tr>
+          <td>${l.full_name || ""}</td>
+          <td>${l.phone}</td>
+          <td>${l.city || ""}</td>
+          <td>${l.stage}</td>
+          <td>${l.lead_score}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    res.send(`
+      <html>
+        <head>
+          <title>SALIH CRM</title>
+        </head>
+        <body style="font-family:Arial;padding:20px">
+          <h1>🚀 SALIH AI CRM</h1>
+
+          <table border="1" cellpadding="8">
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>City</th>
+              <th>Stage</th>
+              <th>Score</th>
+            </tr>
+            ${rows}
+          </table>
+        </body>
+      </html>
+    `);
+  } catch {
+    res.status(500).send("CRM ERROR");
+  }
+});
+
+// =========================
+// HEALTH
+// =========================
+app.get("/", (req, res) => {
+  res.send("SALIH CRM RUNNING 🚀");
+});
+
+// =========================
+// START
 // =========================
 app.listen(port, () => {
-  console.log(`🚀 SALIH AI V3 running on port ${port}`);
-  console.log(`📍 Supabase: ${SUPABASE_URL ? 'Configured ✅' : '❌ Missing'}`);
-  console.log(`🔑 Service Key: ${SUPABASE_SERVICE_ROLE_KEY ? 'Present ✅' : '❌ Missing'}`);
-  console.log(`🛡️ Minimum data filter: ACTIVE`);
+  console.log("🚀 SALIH CRM running on", port);
 });
