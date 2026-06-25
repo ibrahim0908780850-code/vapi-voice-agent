@@ -6,89 +6,156 @@ const app = express();
 app.use(express.json({ limit: "2mb" }));
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
-
 const port = PORT || 3000;
 
+// =========================
+// SUPABASE
+// =========================
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
 // =========================
-// PARSE VAPI TOOL
+// SAFE VAPI PARSER (ROBUST)
 // =========================
 function parseTool(req) {
   try {
-    const body = req.body || {};
+    const toolCalls = req.body?.message?.toolCalls;
 
-    const raw =
-      body?.message?.toolCalls?.[0]?.function?.arguments ||
-      body?.message?.toolCalls?.[0]?.arguments ||
-      body?.toolArguments ||
-      body?.arguments;
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+
+    const call = toolCalls[0];
+
+    let raw =
+      call?.function?.arguments ??
+      call?.arguments ??
+      call?.function?.args ??
+      null;
 
     if (!raw) return null;
 
-    return typeof raw === "string" ? JSON.parse(raw) : raw;
-  } catch {
+    if (typeof raw === "string") {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        console.log("⚠️ JSON parse fallback used");
+        return {};
+      }
+    }
+
+    return raw;
+  } catch (e) {
+    console.log("❌ PARSE ERROR:", e.message);
     return null;
   }
 }
 
 // =========================
-// NORMALIZE
+// NORMALIZATION
 // =========================
 function normalize(t = {}) {
   return {
-    full_name: t.fullName || "",
-    phone: t.phoneNumber || "",
-    city: t.area || "",
-    budget: t.budget || "",
-    intent: t.intent || "",
-    property_type: t.propertyType || ""
+    full_name: (t.fullName || "").trim(),
+    phone: (t.phoneNumber || "").trim(),
+    city: (t.area || "").trim(),
+    budget: (t.budget || "").trim(),
+    intent: (t.intent || "").trim(),
+    property_type: (t.propertyType || "").trim()
   };
 }
 
 // =========================
-// SCORE
+// SMART INTENT DETECTION
+// =========================
+function isBuyIntent(text = "") {
+  const t = text.toLowerCase();
+
+  return (
+    t.includes("شراء") ||
+    t.includes("buy") ||
+    t.includes("ابغى") ||
+    t.includes("أبغى") ||
+    t.includes("أشتري") ||
+    t.includes("اشتري")
+  );
+}
+
+// =========================
+// SCORING ENGINE (SMARTER)
 // =========================
 function scoreLead(d) {
-  let score = 10;
+  let score = 0;
 
-  if (d.phone) score += 40;
-  if (d.full_name) score += 20;
-  if (d.intent) score += 10;
+  if (!d.phone || d.phone.length < 8) return 0;
+
+  if (isBuyIntent(d.intent)) score += 45;
+  if (d.budget) score += 20;
+  if (d.property_type) score += 15;
   if (d.city) score += 10;
-  if (d.property_type) score += 10;
+  if (d.full_name) score += 10;
+
+  // bonus for complete lead
+  if (d.full_name && d.phone && d.city && d.intent) score += 5;
 
   return Math.min(score, 100);
 }
 
 // =========================
-// STAGE (MAP TO YOUR DB)
+// STAGE ENGINE
 // =========================
 function decideStage(score) {
-  if (score >= 80) return "hot";
-  if (score >= 50) return "warm";
-  return "new"; // مهم: مطابق للـ CHECK في جدولك
+  if (score >= 85) return "hot";
+  if (score >= 60) return "warm";
+  if (score >= 30) return "new";
+  return "lost";
 }
 
 // =========================
-// WEBHOOK
+// MAIN WEBHOOK
 // =========================
 app.post("/webhook", async (req, res) => {
+  const toolCallId =
+    req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
+
   try {
+    if (!supabase) {
+      return res.json({
+        results: [
+          {
+            toolCallId,
+            result: JSON.stringify({
+              success: false,
+              error: "supabase_not_configured"
+            })
+          }
+        ]
+      });
+    }
+
     const tool = parseTool(req);
     const data = normalize(tool || {});
 
-    if (!supabase) {
-      return res.json({ success: false, msg: "no supabase" });
+    if (!data.phone) {
+      return res.json({
+        results: [
+          {
+            toolCallId,
+            result: JSON.stringify({
+              success: false,
+              error: "missing_phone"
+            })
+          }
+        ]
+      });
     }
 
     const score = scoreLead(data);
     const stage = decideStage(score);
 
-    // 🔥 IMPORTANT: ONLY EXISTING COLUMNS
+    // =========================
+    // UPSERT LEAD (NO DUPLICATES)
+    // =========================
     const { data: lead, error } = await supabase
       .from("leads")
       .upsert(
@@ -99,9 +166,10 @@ app.post("/webhook", async (req, res) => {
           budget: data.budget,
           intent: data.intent,
           property_type: data.property_type,
-
-          stage: stage,
-          lead_score: score
+          lead_score: score,
+          stage,
+          source: "vapi",
+          updated_at: new Date().toISOString()
         },
         { onConflict: "phone" }
       )
@@ -109,49 +177,83 @@ app.post("/webhook", async (req, res) => {
       .single();
 
     if (error) {
-      console.log("DB ERROR:", error.message);
-      return res.json({ success: false, error: error.message });
+      console.log("❌ DB ERROR:", error.message);
+
+      return res.json({
+        results: [
+          {
+            toolCallId,
+            result: JSON.stringify({
+              success: false,
+              error: "db_error"
+            })
+          }
+        ]
+      });
     }
 
-    if (lead?.id) {
+    // =========================
+    // SAFE CALL LOG (NO CRASH)
+    // =========================
+    try {
       await supabase.from("calls").insert({
         lead_id: lead.id,
         phone: data.phone,
         transcript: "",
+        ai_response: "",
+        duration: 0,
         call_status: "completed",
-        source: "vapi"
+        source: "vapi",
+        created_at: new Date().toISOString()
       });
+    } catch (e) {
+      console.log("⚠️ CALL LOG ERROR:", e.message);
     }
 
+    // =========================
+    // RESPONSE TO VAPI
+    // =========================
     return res.json({
       results: [
         {
-          toolCallId:
-            req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID(),
+          toolCallId,
           result: JSON.stringify({
             success: true,
+            lead_id: lead.id,
             stage,
             score
           })
         }
       ]
     });
+
   } catch (e) {
+    console.log("🔥 SERVER ERROR:", e.message);
+
     return res.json({
       results: [
         {
-          toolCallId: "error",
-          result: JSON.stringify({ success: false })
+          toolCallId,
+          result: JSON.stringify({
+            success: false,
+            error: "internal_error"
+          })
         }
       ]
     });
   }
 });
 
+// =========================
+// HEALTH CHECK
+// =========================
 app.get("/", (req, res) => {
-  res.send("SALIH AI CLEAN RUNNING 🚀");
+  res.send("🚀 SALIH AI ULTIMATE RUNNING");
 });
 
+// =========================
+// START SERVER
+// =========================
 app.listen(port, () => {
-  console.log("🚀 Running on port", port);
+  console.log(`🚀 SALIH AI running on port ${port}`);
 });
