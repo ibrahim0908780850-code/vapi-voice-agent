@@ -17,12 +17,18 @@ const supabase =
     : null;
 
 // =========================
-// SAFE VAPI PARSER (ROBUST)
+// DEBUG LOGGER
+// =========================
+function log(...args) {
+  console.log("🔥", ...args);
+}
+
+// =========================
+// SAFE VAPI PARSER
 // =========================
 function parseTool(req) {
   try {
     const toolCalls = req.body?.message?.toolCalls;
-
     if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
 
     const call = toolCalls[0];
@@ -33,31 +39,39 @@ function parseTool(req) {
       call?.function?.args ??
       null;
 
-    if (!raw) return null;
+    if (!raw) return {};
 
     if (typeof raw === "string") {
       try {
         return JSON.parse(raw);
       } catch {
-        console.log("⚠️ JSON parse fallback used");
+        log("⚠️ JSON parse failed, using raw fallback");
         return {};
       }
     }
 
     return raw;
   } catch (e) {
-    console.log("❌ PARSE ERROR:", e.message);
-    return null;
+    log("PARSE ERROR:", e.message);
+    return {};
   }
 }
 
 // =========================
-// NORMALIZATION
+// NORMALIZATION (ROBUST)
 // =========================
-function normalize(t = {}) {
+function normalize(t = {}, req = {}) {
   return {
     full_name: (t.fullName || "").trim(),
-    phone: (t.phoneNumber || "").trim(),
+
+    phone:
+      (t.phoneNumber ||
+        t.phone ||
+        t.callerNumber ||
+        req.body?.message?.customer?.phone ||
+        req.body?.customer?.number ||
+        "").trim(),
+
     city: (t.area || "").trim(),
     budget: (t.budget || "").trim(),
     intent: (t.intent || "").trim(),
@@ -66,37 +80,31 @@ function normalize(t = {}) {
 }
 
 // =========================
-// SMART INTENT DETECTION
+// INTENT DETECTION
 // =========================
 function isBuyIntent(text = "") {
   const t = text.toLowerCase();
-
   return (
     t.includes("شراء") ||
     t.includes("buy") ||
     t.includes("ابغى") ||
     t.includes("أبغى") ||
-    t.includes("أشتري") ||
     t.includes("اشتري")
   );
 }
 
 // =========================
-// SCORING ENGINE (SMARTER)
+// SCORING ENGINE
 // =========================
 function scoreLead(d) {
   let score = 0;
-
-  if (!d.phone || d.phone.length < 8) return 0;
 
   if (isBuyIntent(d.intent)) score += 45;
   if (d.budget) score += 20;
   if (d.property_type) score += 15;
   if (d.city) score += 10;
   if (d.full_name) score += 10;
-
-  // bonus for complete lead
-  if (d.full_name && d.phone && d.city && d.intent) score += 5;
+  if (d.phone) score += 5;
 
   return Math.min(score, 100);
 }
@@ -112,13 +120,16 @@ function decideStage(score) {
 }
 
 // =========================
-// MAIN WEBHOOK
+// WEBHOOK
 // =========================
 app.post("/webhook", async (req, res) => {
   const toolCallId =
     req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
   try {
+    log("WEBHOOK HIT");
+    log(JSON.stringify(req.body, null, 2));
+
     if (!supabase) {
       return res.json({
         results: [
@@ -134,27 +145,22 @@ app.post("/webhook", async (req, res) => {
     }
 
     const tool = parseTool(req);
-    const data = normalize(tool || {});
+    const data = normalize(tool, req);
 
+    // =========================
+    // NO DATA LOSS POLICY
+    // =========================
     if (!data.phone) {
-      return res.json({
-        results: [
-          {
-            toolCallId,
-            result: JSON.stringify({
-              success: false,
-              error: "missing_phone"
-            })
-          }
-        ]
-      });
+      log("⚠️ Missing phone → saving partial lead");
+
+      data.phone = "unknown_" + Date.now();
     }
 
     const score = scoreLead(data);
     const stage = decideStage(score);
 
     // =========================
-    // UPSERT LEAD (NO DUPLICATES)
+    // UPSERT LEAD
     // =========================
     const { data: lead, error } = await supabase
       .from("leads")
@@ -177,7 +183,7 @@ app.post("/webhook", async (req, res) => {
       .single();
 
     if (error) {
-      console.log("❌ DB ERROR:", error.message);
+      log("DB ERROR:", error.message);
 
       return res.json({
         results: [
@@ -193,7 +199,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // =========================
-    // SAFE CALL LOG (NO CRASH)
+    // CALL LOG (SAFE)
     // =========================
     try {
       await supabase.from("calls").insert({
@@ -207,7 +213,7 @@ app.post("/webhook", async (req, res) => {
         created_at: new Date().toISOString()
       });
     } catch (e) {
-      console.log("⚠️ CALL LOG ERROR:", e.message);
+      log("CALL LOG ERROR:", e.message);
     }
 
     // =========================
@@ -228,7 +234,7 @@ app.post("/webhook", async (req, res) => {
     });
 
   } catch (e) {
-    console.log("🔥 SERVER ERROR:", e.message);
+    log("SERVER ERROR:", e.message);
 
     return res.json({
       results: [
