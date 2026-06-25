@@ -45,7 +45,7 @@ try {
 }
 
 // =========================
-// MEMORY FALLBACK
+// MEMORY QUEUE
 // =========================
 const memoryQueue = [];
 const seen = new Map();
@@ -62,12 +62,11 @@ function normalizeTool(t = {}) {
     intent: t.intent || "",
     property_type: t.propertyType || "",
     notes: t.notes || "",
-    lead_status: t.leadStatus || "",
   };
 }
 
 // =========================
-// SCORE
+// SCORE ENGINE
 // =========================
 function scoreLead(d) {
   let score = 10;
@@ -91,22 +90,20 @@ function decideLead(score) {
 }
 
 // =========================
-// QUEUE SAFE PUSH
+// QUEUE
 // =========================
 function pushJob(job) {
   const payload = JSON.stringify(job);
 
   if (redis) {
-    redis
-      .lpush("vapi_jobs", payload)
-      .catch(() => memoryQueue.push(job));
+    redis.lpush("vapi_jobs", payload).catch(() => memoryQueue.push(job));
   } else {
     memoryQueue.push(job);
   }
 }
 
 // =========================
-// ROBUST PARSER
+// PARSER
 // =========================
 function parseTool(req) {
   try {
@@ -180,7 +177,7 @@ async function processJob(job) {
 }
 
 // =========================
-// WORKER LOOP SAFE
+// WORKER LOOP
 // =========================
 async function startWorker() {
   console.log("⚙️ Worker started...");
@@ -210,7 +207,7 @@ async function startWorker() {
 }
 
 // =========================
-// WEBHOOK
+// WEBHOOK (FIXED FOR VAPI)
 // =========================
 app.post("/webhook", (req, res) => {
   try {
@@ -229,34 +226,39 @@ app.post("/webhook", (req, res) => {
     const score = scoreLead(norm);
     const stage = decideLead(score);
 
+    const toolCallId =
+      req.body?.message?.toolCalls?.[0]?.id || "unknown";
+
     return res.json({
-      success: true,
-      stage,
-      score,
-      message:
-        stage === "hot"
-          ? "عميل جاهز للحجز"
-          : stage === "warm"
-          ? "عميل مهتم"
-          : "نحتاج معلومات أكثر"
+      results: [
+        {
+          toolCallId,
+          result: `stage=${stage},score=${score}`
+        }
+      ]
     });
+
   } catch {
     return res.json({
-      success: false,
-      message: "fallback"
+      results: [
+        {
+          toolCallId: "error",
+          result: "fallback"
+        }
+      ]
     });
   }
 });
 
 // =========================
-// HEALTH
+// HEALTH CHECK
 // =========================
 app.get("/", (req, res) => {
   res.send("SALIH AI RUNNING 🚀");
 });
 
 // =========================
-// START
+// START SERVER
 // =========================
 app.listen(port, () => {
   console.log("🚀 Running on port", port);
