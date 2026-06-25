@@ -24,35 +24,70 @@ function log(...args) {
 }
 
 // =========================
-// SAFE VAPI PARSER
+// 🆕 PARSER V2 - يلتقط البيانات من أي مكان يرسله Vapi
 // =========================
 function parseTool(req) {
   try {
+    // 1. المحاولة الأولى: toolCalls (الطريقة القديمة)
     const toolCalls = req.body?.message?.toolCalls;
-    if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
-
-    const call = toolCalls[0];
-
-    let raw =
-      call?.function?.arguments ??
-      call?.arguments ??
-      call?.function?.args ??
-      null;
-
-    if (!raw) return {};
-
-    if (typeof raw === "string") {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        log("⚠️ JSON parse failed, using raw fallback");
-        return {};
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      const call = toolCalls[0];
+      let raw = call?.function?.arguments ?? call?.arguments ?? null;
+      
+      if (raw) {
+        if (typeof raw === "string") {
+          try {
+            const parsed = JSON.parse(raw);
+            log("✅ Data extracted from toolCalls (string)");
+            return parsed;
+          } catch {
+            log("⚠️ Failed to parse toolCalls string");
+          }
+        } else {
+          log("✅ Data extracted from toolCalls (object)");
+          return raw;
+        }
       }
     }
 
-    return raw;
+    // 2. المحاولة الثانية: Vapi يرسل مباشرة في message
+    const msg = req.body?.message;
+    if (msg && typeof msg === "object") {
+      if (msg.fullName || msg.phoneNumber || msg.intent) {
+        log("✅ Data found directly in message");
+        return {
+          fullName: msg.fullName,
+          phoneNumber: msg.phoneNumber,
+          area: msg.area,
+          budget: msg.budget,
+          intent: msg.intent,
+          propertyType: msg.propertyType
+        };
+      }
+    }
+
+    // 3. المحاولة الثالثة: مباشرة في جسم الطلب
+    const body = req.body;
+    if (body && typeof body === "object") {
+      if (body.fullName || body.phoneNumber || body.intent) {
+        log("✅ Data found directly in body root");
+        return {
+          fullName: body.fullName,
+          phoneNumber: body.phoneNumber,
+          area: body.area,
+          budget: body.budget,
+          intent: body.intent,
+          propertyType: body.propertyType
+        };
+      }
+    }
+
+    log("⚠️ No data found in any expected location");
+    log("📦 Full body:", JSON.stringify(req.body, null, 2));
+    return {};
+    
   } catch (e) {
-    log("PARSE ERROR:", e.message);
+    log("❌ PARSE ERROR:", e.message);
     return {};
   }
 }
@@ -127,10 +162,11 @@ app.post("/webhook", async (req, res) => {
     req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
   try {
-    log("WEBHOOK HIT");
-    log(JSON.stringify(req.body, null, 2));
+    log("🚀 WEBHOOK HIT");
+    log("📦 FULL BODY:", JSON.stringify(req.body, null, 2));
 
     if (!supabase) {
+      log("❌ Supabase not configured");
       return res.json({
         results: [
           {
@@ -145,19 +181,23 @@ app.post("/webhook", async (req, res) => {
     }
 
     const tool = parseTool(req);
+    log("🔧 Parsed tool data:", JSON.stringify(tool, null, 2));
+    
     const data = normalize(tool, req);
+    log("📋 Normalized data:", JSON.stringify(data, null, 2));
 
     // =========================
     // NO DATA LOSS POLICY
     // =========================
     if (!data.phone) {
-      log("⚠️ Missing phone → saving partial lead");
-
+      log("⚠️ Missing phone → saving partial lead with generated ID");
       data.phone = "unknown_" + Date.now();
     }
 
     const score = scoreLead(data);
     const stage = decideStage(score);
+    
+    log("🎯 Score:", score, "| Stage:", stage);
 
     // =========================
     // UPSERT LEAD
@@ -183,7 +223,8 @@ app.post("/webhook", async (req, res) => {
       .single();
 
     if (error) {
-      log("DB ERROR:", error.message);
+      log("❌ DB ERROR:", error.message);
+      log("❌ Full error:", JSON.stringify(error, null, 2));
 
       return res.json({
         results: [
@@ -191,12 +232,15 @@ app.post("/webhook", async (req, res) => {
             toolCallId,
             result: JSON.stringify({
               success: false,
-              error: "db_error"
+              error: "db_error",
+              details: error.message
             })
           }
         ]
       });
     }
+
+    log("✅ Lead saved:", lead.id);
 
     // =========================
     // CALL LOG (SAFE)
@@ -212,13 +256,16 @@ app.post("/webhook", async (req, res) => {
         source: "vapi",
         created_at: new Date().toISOString()
       });
+      log("✅ Call log created");
     } catch (e) {
-      log("CALL LOG ERROR:", e.message);
+      log("⚠️ CALL LOG ERROR:", e.message);
     }
 
     // =========================
     // RESPONSE TO VAPI
     // =========================
+    log("✅ Sending success response to Vapi");
+    
     return res.json({
       results: [
         {
@@ -234,7 +281,8 @@ app.post("/webhook", async (req, res) => {
     });
 
   } catch (e) {
-    log("SERVER ERROR:", e.message);
+    log("💥 SERVER ERROR:", e.message);
+    log("💥 Stack:", e.stack);
 
     return res.json({
       results: [
@@ -254,12 +302,14 @@ app.post("/webhook", async (req, res) => {
 // HEALTH CHECK
 // =========================
 app.get("/", (req, res) => {
-  res.send("🚀 SALIH AI ULTIMATE RUNNING");
+  res.send("🚀 SALIH AI ULTIMATE V2 RUNNING");
 });
 
 // =========================
 // START SERVER
 // =========================
 app.listen(port, () => {
-  console.log(`🚀 SALIH AI running on port ${port}`);
+  console.log(`🚀 SALIH AI V2 running on port ${port}`);
+  console.log(`📍 Supabase: ${SUPABASE_URL ? 'Configured ✅' : '❌ Missing'}`);
+  console.log(`🔑 Service Key: ${SUPABASE_SERVICE_ROLE_KEY ? 'Present ✅' : '❌ Missing'}`);
 });
