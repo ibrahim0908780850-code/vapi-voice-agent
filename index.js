@@ -2,8 +2,16 @@ import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
+// =========================
+// ROUTES
+// =========================
+import whatsappRoutes from "./routes/whatsapp.js";
+
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+
+// 👇 WhatsApp Route Mount
+app.use("/whatsapp", whatsappRoutes);
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
 const port = PORT || 3000;
