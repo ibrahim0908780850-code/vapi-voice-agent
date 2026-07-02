@@ -1,5 +1,5 @@
 import express from "express";
-import { supabase } from "../config/supabase.js";
+import { getSupabase } from "../config/supabase.js";
 import crypto from "crypto";
 
 const router = express.Router();
@@ -8,18 +8,24 @@ router.post("/", async (req, res) => {
   const toolCallId =
     req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
 
+  // 👇 أهم خطوة: تحديد الشركة
+  const tenant_id =
+    req.body?.message?.assistantId || "default_tenant";
+
+  const supabase = getSupabase(tenant_id);
+
   const phone = req.body?.message?.customer?.phone || "unknown";
 
-  // 1. حفظ lead بسيط (سنطوره لاحقًا)
   const { data, error } = await supabase
     .from("leads")
     .upsert(
       {
+        tenant_id,
         phone,
         stage: "new",
         status: "new"
       },
-      { onConflict: "phone" }
+      { onConflict: "phone,tenant_id" }
     )
     .select();
 
@@ -40,6 +46,7 @@ router.post("/", async (req, res) => {
         toolCallId,
         result: JSON.stringify({
           success: true,
+          tenant_id,
           lead_id: data?.[0]?.id
         })
       }
