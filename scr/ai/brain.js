@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getPropertyRecommendations } from "./recommendation.engine.js";
+import { runAutopilot } from "./autopilot.engine.js";
 
 export async function generateAIResponse({
   tenant_id,
@@ -71,6 +72,15 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       response?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "مرحباً 👋 كيف أساعدك؟";
 
+    // 6. 🔥 تشغيل Autopilot (بعد توليد الرد)
+    await runAutopilot({
+      tenant_id,
+      lead_id,
+      recommendations,
+      aiResponse
+    });
+
+    // 7. إرجاع النتيجة النهائية
     return {
       response: aiResponse,
       recommendations: formattedRecommendations
