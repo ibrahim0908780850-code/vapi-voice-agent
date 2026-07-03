@@ -1,3 +1,4 @@
+import { analyzeDeal } from "../ai/deal-intelligence.js";
 import express from "express";
 import crypto from "crypto";
 import { getSupabase } from "../config/supabase.js";
