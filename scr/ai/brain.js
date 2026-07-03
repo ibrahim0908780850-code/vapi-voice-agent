@@ -1,48 +1,41 @@
 import axios from "axios";
-import { buildTenantContext } from "./contextBuilder.js";
-import { getSupabase } from "../config/supabase.js";
 
-export async function generateAIResponse(tenant_id, message) {
-  const supabase = getSupabase(tenant_id);
-
-  const context = await buildTenantContext(
-    supabase,
-    tenant_id,
-    message
-  );
-
+export async function generateAIResponse({
+  tenant_id,
+  message,
+  tenantContext
+}) {
   const response = await axios.post(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       contents: [
         {
           parts: [
             {
               text: `
-أنت وكيل عقاري ذكي.
+أنت موظف مبيعات عقارات ذكي داخل شركة.
 
-${context}
+📌 سياق العميل:
+${tenantContext}
+
+📌 رسالة العميل:
+${message}
 
 ⚠️ قواعد:
 - لا تخترع معلومات
-- ركز على البيع
-- اسأل سؤال واحد فقط
-- كن مختصر جدًا
+- استخدم الذاكرة فقط
+- كن مختصرًا جدًا
+- هدفك إغلاق الصفقة
               `
             }
           ]
         }
       ]
-    },
-    {
-      params: {
-        key: process.env.GEMINI_API_KEY
-      }
     }
   );
 
   return (
-    response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+    response?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
     "مرحباً 👋 كيف أساعدك؟"
   );
 }
