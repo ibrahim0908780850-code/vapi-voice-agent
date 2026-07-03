@@ -1,42 +1,33 @@
-import { getSupabase } from "../config/supabase.js";
 import axios from "axios";
+import { buildTenantContext } from "./contextBuilder.js";
+import { getSupabase } from "../config/supabase.js";
 
 export async function generateAIResponse(tenant_id, message) {
   const supabase = getSupabase(tenant_id);
 
-  // 📌 1. جلب بيانات الشركة
-  const { data: knowledge } = await supabase
-    .from("ai_knowledge_base")
-    .select("*")
-    .eq("tenant_id", tenant_id);
+  const context = await buildTenantContext(
+    supabase,
+    tenant_id,
+    message
+  );
 
-  const context = knowledge
-    ?.map(k => k.content)
-    .join("\n")
-    .slice(0, 12000);
-
-  // 📌 2. إرسال إلى Gemini
   const response = await axios.post(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
     {
       contents: [
         {
           parts: [
             {
               text: `
-أنت مساعد ذكي لشركة عقارية.
+أنت وكيل عقاري ذكي.
 
-📌 بيانات الشركة:
 ${context}
 
-📌 سؤال العميل:
-${message}
-
 ⚠️ قواعد:
-- لا تخترع بيانات
-- استخدم فقط معلومات الشركة
+- لا تخترع معلومات
 - ركز على البيع
-- كن مختصرًا ومقنعًا
+- اسأل سؤال واحد فقط
+- كن مختصر جدًا
               `
             }
           ]
@@ -50,5 +41,8 @@ ${message}
     }
   );
 
-  return response.data;
+  return (
+    response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+    "مرحباً 👋 كيف أساعدك؟"
+  );
 }
