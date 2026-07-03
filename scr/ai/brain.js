@@ -1,6 +1,7 @@
 import axios from "axios";
 import { getPropertyRecommendations } from "./recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
+import { sendWhatsAppAutopilot } from "./whatsapp.autopilot.js";
 
 export async function generateAIResponse({
   tenant_id,
@@ -72,7 +73,7 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       response?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "مرحباً 👋 كيف أساعدك؟";
 
-    // 6. 🔥 تشغيل Autopilot (بعد توليد الرد)
+    // 6. 🔥 تشغيل Autopilot (تحليل + قرارات داخلية)
     await runAutopilot({
       tenant_id,
       lead_id,
@@ -80,7 +81,15 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       aiResponse
     });
 
-    // 7. إرجاع النتيجة النهائية
+    // 7. 📲 إرسال WhatsApp تلقائي إذا العميل Hot
+    await sendWhatsAppAutopilot({
+      tenant_id,
+      lead_id,
+      recommendations: formattedRecommendations,
+      aiResponse
+    });
+
+    // 8. إرجاع النتيجة النهائية
     return {
       response: aiResponse,
       recommendations: formattedRecommendations
