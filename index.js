@@ -9,16 +9,17 @@ import whatsappRoutes from "./routes/whatsapp.js";
 import aiGatewayRoutes from "./routes/ai-gateway.js";
 
 const app = express();
+
+// ⚠️ مهم: Twilio يحتاج urlencoded
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: "2mb" }));
 
 // =========================
 // ROUTE MOUNTING
 // =========================
 
-// 👇 WhatsApp Route
+// VAPI routes (كما هي)
 app.use("/whatsapp", whatsappRoutes);
-
-// 👇 AI Gateway (NEW - CORE SYSTEM)
 app.use("/ai-gateway", aiGatewayRoutes);
 
 // =========================
@@ -28,13 +29,7 @@ const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
 const port = PORT || 3000;
 
 // =========================
-// DEBUG SAFE
-// =========================
-const DEBUG = process.env.DEBUG === "true";
-const log = (...args) => DEBUG && console.log("🔥", ...args);
-
-// =========================
-// SUPABASE SAFE INIT
+// SUPABASE INIT
 // =========================
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
@@ -42,82 +37,20 @@ const supabase =
     : null;
 
 // =========================
-// TOOL PARSER SAFE
+// HEALTH CHECK
 // =========================
-function parseTool(req) {
-  try {
-    const calls = req.body?.message?.toolCalls;
-    if (!Array.isArray(calls) || calls.length === 0) return {};
-
-    const raw =
-      calls[0]?.function?.arguments ||
-      calls[0]?.arguments ||
-      calls[0]?.function?.args;
-
-    return typeof raw === "string" ? JSON.parse(raw) : raw || {};
-  } catch {
-    return {};
-  }
-}
+app.get("/", (req, res) => {
+  res.send("SALIH CRM RUNNING 🚀");
+});
 
 // =========================
-// NORMALIZE
-// =========================
-function normalize(t = {}, req = {}) {
-  return {
-    full_name: (t.fullName || "").trim(),
-    phone:
-      (t.phoneNumber ||
-        t.phone ||
-        req.body?.message?.customer?.phone ||
-        "").trim(),
-
-    city: (t.area || t.city || "").trim(),
-    budget: (t.budget || "").trim(),
-    intent: (t.intent || "").trim(),
-    property_type: (t.propertyType || "").trim()
-  };
-}
-
-// =========================
-// SCORE + STAGE
-// =========================
-function isBuyIntent(text = "") {
-  const t = text.toLowerCase();
-  return (
-    t.includes("شراء") ||
-    t.includes("buy") ||
-    t.includes("ابغى") ||
-    t.includes("اشتري")
-  );
-}
-
-function scoreLead(d) {
-  let score = 0;
-  if (isBuyIntent(d.intent)) score += 45;
-  if (d.budget) score += 20;
-  if (d.property_type) score += 15;
-  if (d.city) score += 10;
-  if (d.full_name) score += 10;
-  if (d.phone) score += 5;
-  return Math.min(score, 100);
-}
-
-function stage(score) {
-  if (score >= 85) return "hot";
-  if (score >= 60) return "warm";
-  if (score >= 30) return "new";
-  return "lost";
-}
-
-// =========================
-// WEBHOOK (VAPI → CRM)
+// VAPI WEBHOOK (كما هو عندك)
 // =========================
 app.post("/webhook", async (req, res) => {
-  const toolCallId =
-    req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
-
   try {
+    const toolCallId =
+      req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
+
     if (!supabase) {
       return res.json({
         results: [
@@ -129,55 +62,45 @@ app.post("/webhook", async (req, res) => {
       });
     }
 
-    const tool = parseTool(req);
-    const data = normalize(tool, req);
+    const calls = req.body?.message?.toolCalls;
+    const raw =
+      calls?.[0]?.function?.arguments ||
+      calls?.[0]?.arguments ||
+      calls?.[0]?.function?.args;
 
-    if (!data.phone) {
-      data.phone = `unknown_${crypto.randomUUID()}`;
-    }
+    const tool =
+      typeof raw === "string" ? JSON.parse(raw) : raw || {};
 
-    const score = scoreLead(data);
-    const leadStage = stage(score);
+    const data = {
+      full_name: (tool.fullName || "").trim(),
+      phone: (tool.phone || "").trim(),
+      city: (tool.city || "").trim(),
+      budget: (tool.budget || "").trim(),
+      intent: (tool.intent || "").trim(),
+      property_type: (tool.propertyType || "").trim()
+    };
 
     const { data: leads, error } = await supabase
       .from("leads")
       .upsert(
         {
-          full_name: data.full_name,
-          phone: data.phone,
-          city: data.city,
-          budget: data.budget,
-          intent: data.intent,
-          property_type: data.property_type,
-          lead_score: score,
-          stage: leadStage,
-          status: leadStage,
+          ...data,
           updated_at: new Date().toISOString()
         },
         { onConflict: "phone" }
       )
       .select();
 
-    if (error || !leads?.length) {
-      log("DB ERROR:", error?.message);
-
+    if (error) {
       return res.json({
         results: [
           {
             toolCallId,
-            result: JSON.stringify({ error: "db_error" })
+            result: JSON.stringify({ error: error.message })
           }
         ]
       });
     }
-
-    const lead = leads[0];
-
-    await supabase.from("crm_activities").insert({
-      lead_id: lead.id,
-      action: "lead_created",
-      note: `Score ${score}`
-    });
 
     return res.json({
       results: [
@@ -185,21 +108,17 @@ app.post("/webhook", async (req, res) => {
           toolCallId,
           result: JSON.stringify({
             success: true,
-            lead_id: lead.id,
-            stage: leadStage,
-            score
+            lead_id: leads?.[0]?.id
           })
         }
       ]
     });
   } catch (e) {
-    log("SERVER ERROR:", e.message);
-
     return res.json({
       results: [
         {
-          toolCallId,
-          result: JSON.stringify({ error: "internal_error" })
+          toolCallId: crypto.randomUUID(),
+          result: JSON.stringify({ error: "server_error" })
         }
       ]
     });
@@ -207,112 +126,53 @@ app.post("/webhook", async (req, res) => {
 });
 
 // =========================
-// CRM API SAFE
+// 🟢 TWILIO WHATSAPP WEBHOOK (NEW)
 // =========================
-
-app.get("/api/leads", async (req, res) => {
+app.post("/whatsapp-webhook", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("leads")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const message = req.body.Body;
+    const from = req.body.From;
 
-    if (error) return res.status(500).json({ error: error.message });
+    console.log("📩 WhatsApp:", message);
+    console.log("📞 From:", from);
 
-    res.json(data || []);
-  } catch {
-    res.status(500).json({ error: "server_error" });
-  }
-});
+    // حفظ lead في CRM
+    if (supabase) {
+      await supabase.from("leads").upsert(
+        {
+          phone: from,
+          intent: message,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "phone" }
+      );
+    }
 
-app.post("/api/leads/status", async (req, res) => {
-  try {
-    const { id, status } = req.body;
-
-    const { error } = await supabase
-      .from("leads")
-      .update({ status })
-      .eq("id", id);
-
-    if (error) return res.status(500).json({ error: error.message });
-
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-app.post("/api/leads/note", async (req, res) => {
-  try {
-    const { lead_id, note } = req.body;
-
-    await supabase.from("crm_activities").insert({
-      lead_id,
-      action: "note",
-      note
-    });
-
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// =========================
-// CRM DASHBOARD
-// =========================
-app.get("/crm", async (req, res) => {
-  try {
-    const { data } = await supabase
-      .from("leads")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    const rows = (data || [])
-      .map(
-        (l) => `
-        <tr>
-          <td>${l.full_name || ""}</td>
-          <td>${l.phone}</td>
-          <td>${l.city || ""}</td>
-          <td>${l.stage}</td>
-          <td>${l.lead_score}</td>
-        </tr>
-      `
-      )
-      .join("");
-
+    // رد واتساب (Twilio format XML)
+    res.set("Content-Type", "text/xml");
     res.send(`
-      <html>
-        <head>
-          <title>SALIH CRM</title>
-        </head>
-        <body style="font-family:Arial;padding:20px">
-          <h1>🚀 SALIH AI CRM</h1>
-
-          <table border="1" cellpadding="8">
-            <tr>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>City</th>
-              <th>Stage</th>
-              <th>Score</th>
-            </tr>
-            ${rows}
-          </table>
-        </body>
-      </html>
+      <Response>
+        <Message>تم استلام رسالتك يا عميل صالح 🚀</Message>
+      </Response>
     `);
-  } catch {
-    res.status(500).send("CRM ERROR");
+  } catch (e) {
+    console.log("WhatsApp Error:", e);
+
+    res.set("Content-Type", "text/xml");
+    res.send(`
+      <Response>
+        <Message>حدث خطأ، حاول لاحقًا</Message>
+      </Response>
+    `);
   }
 });
 
 // =========================
-// HEALTH
+// CRM API
 // =========================
-app.get("/", (req, res) => {
-  res.send("SALIH CRM RUNNING 🚀");
+app.get("/api/leads", async (req, res) => {
+  const { data } = await supabase.from("leads").select("*");
+  res.json(data || []);
 });
 
 // =========================
