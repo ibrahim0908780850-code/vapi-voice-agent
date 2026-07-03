@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { getSupabase } from "../config/supabase.js";
 import { generateAIResponse } from "../ai/brain.js";
 
+// 🧠 AI Memory
+import { getLeadMemory } from "../ai/memory.js";
+import { buildAIContext } from "../ai/build-context.js";
+
 const router = express.Router();
 
 router.post("/", async (req, res) => {
@@ -12,7 +16,7 @@ router.post("/", async (req, res) => {
 
   try {
     // =========================
-    // 1. TENANT RESOLUTION (مهم جدًا)
+    // 1. TENANT RESOLUTION
     // =========================
     const tenant_id =
       req.body?.message?.assistantId ||
@@ -33,7 +37,7 @@ router.post("/", async (req, res) => {
     // =========================
     // 3. GET OR CREATE LEAD
     // =========================
-    const { data: lead } = await supabase
+    const { data: lead, error: leadError } = await supabase
       .from("leads")
       .upsert(
         {
@@ -48,16 +52,33 @@ router.post("/", async (req, res) => {
       .select()
       .single();
 
-    // =========================
-    // 4. AI RESPONSE
-    // =========================
-    const aiReply = await generateAIResponse(
-      tenant_id,
-      userMessage
-    );
+    if (leadError) {
+      throw leadError;
+    }
 
     // =========================
-    // 5. SAVE MESSAGE
+    // 4. LOAD AI MEMORY
+    // =========================
+    const memory = await getLeadMemory(
+      tenant_id,
+      phone
+    );
+
+    const tenantContext =
+      buildAIContext(memory);
+
+    // =========================
+    // 5. AI RESPONSE
+    // =========================
+    const aiReply =
+      await generateAIResponse({
+        tenant_id,
+        message: userMessage,
+        tenantContext
+      });
+
+    // =========================
+    // 6. SAVE MESSAGE
     // =========================
     await supabase.from("messages").insert({
       tenant_id,
@@ -69,18 +90,18 @@ router.post("/", async (req, res) => {
     });
 
     // =========================
-    // 6. UPDATE LEAD INTELLIGENCE
+    // 7. UPDATE LEAD
     // =========================
     await supabase
       .from("leads")
       .update({
-        last_activity: new Date(),
+        last_activity: new Date().toISOString(),
         stage: "warm"
       })
       .eq("id", lead?.id);
 
     // =========================
-    // 7. CRM ACTIVITY LOG
+    // 8. CRM ACTIVITY
     // =========================
     await supabase.from("crm_activities").insert({
       tenant_id,
@@ -90,7 +111,7 @@ router.post("/", async (req, res) => {
     });
 
     // =========================
-    // 8. RESPONSE
+    // 9. RESPONSE
     // =========================
     return res.json({
       results: [
