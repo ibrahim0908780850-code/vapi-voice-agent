@@ -6,13 +6,24 @@ import crypto from "crypto";
 // ROUTES
 // =========================
 import whatsappRoutes from "./routes/whatsapp.js";
+import aiGatewayRoutes from "./routes/ai-gateway.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
-// 👇 WhatsApp Route Mount
+// =========================
+// ROUTE MOUNTING
+// =========================
+
+// 👇 WhatsApp Route
 app.use("/whatsapp", whatsappRoutes);
 
+// 👇 AI Gateway (NEW - CORE SYSTEM)
+app.use("/ai-gateway", aiGatewayRoutes);
+
+// =========================
+// ENV
+// =========================
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
 const port = PORT || 3000;
 
@@ -248,7 +259,7 @@ app.post("/api/leads/note", async (req, res) => {
 });
 
 // =========================
-// CRM DASHBOARD (SAFE UI)
+// CRM DASHBOARD
 // =========================
 app.get("/crm", async (req, res) => {
   try {
@@ -305,7 +316,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// START
+// START SERVER
 // =========================
 app.listen(port, () => {
   console.log("🚀 SALIH CRM running on", port);
