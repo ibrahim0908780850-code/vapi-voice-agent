@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getPropertyRecommendations } from "./../recommendation.engine.js";
+import { getPropertyRecommendations } from "../../recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
 import { sendWhatsAppAutopilot } from "./whatsapp.autopilot.js";
 
