@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 import { getSupabase } from "../config/supabase.js";
 import { generateAIResponse } from "../ai/brain.js";
-import { getLeadMemory } from "../ai/memory.js";
+import { getLeadMemory } from "../../ai/memory.js";
 import { buildAIContext } from "../ai/build-context.js";
 import { analyzeDeal } from "../ai/deal-intelligence.js";
 
@@ -15,7 +15,6 @@ router.post("/", async (req, res) => {
     crypto.randomUUID();
 
   try {
-
     // =========================
     // TENANT
     // =========================
@@ -59,38 +58,30 @@ router.post("/", async (req, res) => {
     // =========================
     // LOAD MEMORY
     // =========================
-    const memory =
-      await getLeadMemory(
-        tenant_id,
-        phone
-      );
+    const memory = await getLeadMemory(tenant_id, phone);
 
-    const tenantContext =
-      buildAIContext(memory);
+    const tenantContext = buildAIContext(memory);
 
     // =========================
     // AI RESPONSE
     // =========================
-    const aiReply =
-      await generateAIResponse({
-        tenant_id,
-        message: userMessage,
-        tenantContext
-      });
+    const aiReply = await generateAIResponse({
+      tenant_id,
+      message: userMessage,
+      tenantContext
+    });
 
     // =========================
     // SAVE MESSAGE
     // =========================
-    await supabase
-      .from("messages")
-      .insert({
-        tenant_id,
-        lead_id: lead.id,
-        phone,
-        message: userMessage,
-        ai_response: aiReply,
-        source: "ai_gateway"
-      });
+    await supabase.from("messages").insert({
+      tenant_id,
+      lead_id: lead.id,
+      phone,
+      message: userMessage,
+      ai_response: aiReply,
+      source: "ai_gateway"
+    });
 
     // =========================
     // UPDATE LEAD
@@ -106,82 +97,68 @@ router.post("/", async (req, res) => {
     // =========================
     // CRM LOG
     // =========================
-    await supabase
-      .from("crm_activities")
-      .insert({
-        tenant_id,
-        lead_id: lead.id,
-        action: "ai_message",
-        note: userMessage
-      });
+    await supabase.from("crm_activities").insert({
+      tenant_id,
+      lead_id: lead.id,
+      action: "ai_message",
+      note: userMessage
+    });
 
     // =========================
     // LOAD HISTORY
     // =========================
-    const { data: messages } =
-      await supabase
-        .from("messages")
-        .select("*")
-        .eq("lead_id", lead.id);
+    const { data: messages } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("lead_id", lead.id);
 
-    const { data: calls } =
-      await supabase
-        .from("calls")
-        .select("*")
-        .eq("lead_id", lead.id);
+    const { data: calls } = await supabase
+      .from("calls")
+      .select("*")
+      .eq("lead_id", lead.id);
 
-    const { data: appointments } =
-      await supabase
-        .from("appointments")
-        .select("*")
-        .eq("lead_id", lead.id);
+    const { data: appointments } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("lead_id", lead.id);
 
-    const { data: activities } =
-      await supabase
-        .from("crm_activities")
-        .select("*")
-        .eq("lead_id", lead.id);
+    const { data: activities } = await supabase
+      .from("crm_activities")
+      .select("*")
+      .eq("lead_id", lead.id);
 
     // =========================
     // DEAL INTELLIGENCE
     // =========================
-    const dealResult =
-      await analyzeDeal({
-        lead,
-        messages: messages || [],
-        calls: calls || [],
-        appointments: appointments || [],
-        activities: activities || []
-      });
+    const dealResult = await analyzeDeal({
+      lead,
+      messages: messages || [],
+      calls: calls || [],
+      appointments: appointments || [],
+      activities: activities || []
+    });
 
     // =========================
     // CREATE / UPDATE DEAL
     // =========================
     if (dealResult.score >= 70) {
-
-      const { data: existingDeal } =
-        await supabase
-          .from("deals")
-          .select("*")
-          .eq("lead_id", lead.id)
-          .single();
+      const { data: existingDeal } = await supabase
+        .from("deals")
+        .select("*")
+        .eq("lead_id", lead.id)
+        .single();
 
       if (!existingDeal) {
-
-        await supabase
-          .from("deals")
-          .insert({
-            tenant_id,
-            lead_id: lead.id,
-            title: `Deal - ${phone}`,
-            stage: "qualified",
-            probability: dealResult.score,
-            value: dealResult.expectedValue,
-            status: "open"
-          });
-
+        await supabase.from("deals").insert({
+          tenant_id,
+          lead_id: lead.id,
+          title: `Deal - ${phone}`,
+          stage: "qualified",
+          probability: dealResult.score,
+          value: dealResult.expectedValue,
+          status: "open"
+        });
       } else {
-
         await supabase
           .from("deals")
           .update({
@@ -190,9 +167,7 @@ router.post("/", async (req, res) => {
             stage: dealResult.stage
           })
           .eq("id", existingDeal.id);
-
       }
-
     }
 
     // =========================
@@ -215,7 +190,6 @@ router.post("/", async (req, res) => {
     });
 
   } catch (err) {
-
     console.error(err);
 
     return res.json({
@@ -228,7 +202,6 @@ router.post("/", async (req, res) => {
         }
       ]
     });
-
   }
 });
 
