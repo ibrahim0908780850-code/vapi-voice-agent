@@ -1,0 +1,13 @@
+async function sendToN8N(integration, eventType, payload) {
+  try {
+    await axios.post(integration.endpoint, {
+      event: eventType,
+      data: payload
+    });
+
+    console.log("✅ Sent to n8n");
+
+  } catch (err) {
+    console.error("❌ n8n error:", err.message);
+  }
+}
