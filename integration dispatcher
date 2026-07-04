@@ -1,0 +1,19 @@
+async function handleIntegration(integration, eventType, payload) {
+  switch (integration.type) {
+
+    case "api":
+      return sendToAPI(integration, eventType, payload);
+
+    case "webhook":
+      return sendWebhook(integration, eventType, payload);
+
+    case "n8n":
+      return sendToN8N(integration, eventType, payload);
+
+    case "sheets":
+      return sendToSheets(integration, eventType, payload);
+
+    default:
+      console.log("Unknown integration type:", integration.type);
+  }
+}
