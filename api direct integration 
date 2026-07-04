@@ -1,0 +1,18 @@
+async function sendToAPI(integration, eventType, payload) {
+  try {
+    await axios.post(integration.endpoint, {
+      event: eventType,
+      data: payload
+    }, {
+      headers: {
+        Authorization: `Bearer ${integration.api_key || ""}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    console.log("✅ Sent to API");
+
+  } catch (err) {
+    console.error("❌ API error:", err.message);
+  }
+}
