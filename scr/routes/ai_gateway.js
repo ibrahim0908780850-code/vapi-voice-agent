@@ -5,7 +5,7 @@ import { getSupabase } from "../config/supabase.js";
 import { generateAIResponse } from "../ai/brain.js";
 import { getLeadMemory } from "../../ai/memory.js";
 import { buildAIContext } from "../../ai/build _context.js";
-import { analyzeDeal } from "../ai/deal-intelligence.js";
+import { analyzeDeal } from "../../ai/deal intelligence.js";
 
 const router = express.Router();
 
