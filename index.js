@@ -18,7 +18,7 @@ app.use(express.json({ limit: "2mb" }));
 // ROUTE MOUNTING
 // =========================
 app.use("/whatsapp", whatsappRoutes);
-app.use("/ai-gateway", aiGatewayRoutes);
+app.use("/ai_gateway", aiGatewayRoutes);
 
 // =========================
 // ENV
