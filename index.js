@@ -3,10 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
 // =========================
-// ROUTES
+// ROUTES (FIXED)
 // =========================
-import whatsappRoutes from "./routes/whatsapp.js";
-import aiGatewayRoutes from "./routes/ai-gateway.js";
+import whatsappRoutes from "./src/routes/whatsapp.js";
+import aiGatewayRoutes from "./src/routes/ai-gateway.js";
 
 const app = express();
 
@@ -17,8 +17,6 @@ app.use(express.json({ limit: "2mb" }));
 // =========================
 // ROUTE MOUNTING
 // =========================
-
-// VAPI routes (كما هي)
 app.use("/whatsapp", whatsappRoutes);
 app.use("/ai-gateway", aiGatewayRoutes);
 
@@ -44,7 +42,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// VAPI WEBHOOK (كما هو عندك)
+// VAPI WEBHOOK
 // =========================
 app.post("/webhook", async (req, res) => {
   try {
@@ -126,7 +124,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // =========================
-// 🟢 TWILIO WHATSAPP WEBHOOK (NEW)
+// TWILIO WHATSAPP WEBHOOK
 // =========================
 app.post("/whatsapp-webhook", async (req, res) => {
   try {
@@ -136,7 +134,6 @@ app.post("/whatsapp-webhook", async (req, res) => {
     console.log("📩 WhatsApp:", message);
     console.log("📞 From:", from);
 
-    // حفظ lead في CRM
     if (supabase) {
       await supabase.from("leads").upsert(
         {
@@ -148,7 +145,6 @@ app.post("/whatsapp-webhook", async (req, res) => {
       );
     }
 
-    // رد واتساب (Twilio format XML)
     res.set("Content-Type", "text/xml");
     res.send(`
       <Response>
@@ -171,6 +167,10 @@ app.post("/whatsapp-webhook", async (req, res) => {
 // CRM API
 // =========================
 app.get("/api/leads", async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase not configured" });
+  }
+
   const { data } = await supabase.from("leads").select("*");
   res.json(data || []);
 });
