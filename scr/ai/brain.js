@@ -1,7 +1,7 @@
 import axios from "axios";
 import { getPropertyRecommendations } from "../../ai/recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
-import { sendWhatsAppAutopilot } from "./whatsapp.autopilot.js";
+import { sendWhatsAppAutopilot } from "../../ai/whatsapp.autopilot.js";
 
 export async function generateAIResponse({
   tenant_id,
