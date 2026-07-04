@@ -1,0 +1,13 @@
+async function sendWebhook(integration, eventType, payload) {
+  try {
+    await axios.post(integration.endpoint, {
+      event: eventType,
+      payload
+    });
+
+    console.log("✅ Webhook sent");
+
+  } catch (err) {
+    console.error("❌ Webhook error:", err.message);
+  }
+}
