@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getSupabase } from "../config/supabase.js";
+import { getSupabase } from "../scr/config/supabase.js";
 
 /**
  * 📲 WhatsApp Autopilot Sender
