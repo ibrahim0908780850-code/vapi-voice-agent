@@ -1,4 +1,4 @@
-import { getSupabase } from "../config/supabase.js";
+import { getSupabase } from "../../scr/config/supabase.js";
 
 export async function getLeadMemory(tenant_id, phone) {
   const supabase = getSupabase(tenant_id);
