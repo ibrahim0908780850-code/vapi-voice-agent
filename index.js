@@ -6,7 +6,7 @@ import crypto from "crypto";
 // ROUTES (FIXED)
 // =========================
 import whatsappRoutes from "./scr/routes/whatsapp.js";
-import aiGatewayRoutes from "./scr/routes/ai-gateway.js";
+import aiGatewayRoutes from "./scr/routes/ai_gateway.js";
 
 const app = express();
 
