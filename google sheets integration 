@@ -1,0 +1,13 @@
+async function sendToSheets(integration, eventType, payload) {
+  try {
+    await axios.post(integration.endpoint, {
+      event: eventType,
+      row: payload
+    });
+
+    console.log("✅ Sent to Sheets");
+
+  } catch (err) {
+    console.error("❌ Sheets error:", err.message);
+  }
+}
