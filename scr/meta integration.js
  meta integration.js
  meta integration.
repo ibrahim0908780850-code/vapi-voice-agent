@@ -1,23 +1,37 @@
 import express from "express";
-import { routeIntegration } from "./integration.dispatcher.js";
+import { routeIntegration } from "../integration.dispatcher.js";
 
 const router = express.Router();
 
 /**
- * 📥 استقبال كل رسائل Meta (IG + Messenger + WhatsApp)
+ * 🔍 Detect Channel
+ */
+function detectChannel(entry) {
+  if (entry.messaging?.[0]?.message?.is_echo) return "ignore";
+
+  if (entry.id?.includes("instagram")) return "instagram";
+
+  if (entry.id?.includes("page")) return "messenger";
+
+  return "whatsapp";
+}
+
+/**
+ * 📥 Meta Webhook Entry
  */
 router.post("/meta/webhook", async (req, res) => {
   try {
 
     const body = req.body;
 
-    // تحديد نوع القناة
     const entry = body.entry?.[0];
     const messaging = entry?.messaging?.[0];
 
+    const channel = detectChannel(entry);
+
     const event = {
       tenant_id: extractTenant(entry),
-      channel: detectChannel(entry), // whatsapp | instagram | messenger
+      channel,
       user_id: messaging.sender.id,
       message: messaging.message?.text,
       raw: body
@@ -28,7 +42,7 @@ router.post("/meta/webhook", async (req, res) => {
     res.sendStatus(200);
 
   } catch (err) {
-    console.error("Meta Webhook Error:", err.message);
+    console.error(err.message);
     res.sendStatus(500);
   }
 });
