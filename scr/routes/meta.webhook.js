@@ -7,7 +7,7 @@ const router = express.Router();
 // VERIFY WEBHOOK (Meta Requirement)
 // =========================
 router.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = "salih_meta_123"; // نفس اللي في Meta dashboard
+  const VERIFY_TOKEN = "salih_meta_123";
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -34,12 +34,15 @@ router.post("/webhook", async (req, res) => {
     if (!messaging) return res.sendStatus(200);
 
     // =========================
-    // Detect Channel
+    // Detect channel (Instagram / Messenger)
     // =========================
     const channel = entry.id?.includes("instagram")
       ? "instagram"
       : "messenger";
 
+    // =========================
+    // Build unified event
+    // =========================
     const event = {
       tenant_id: "default",
       channel,
@@ -51,7 +54,7 @@ router.post("/webhook", async (req, res) => {
     };
 
     // =========================
-    // Send to your system
+    // Send to core system
     // =========================
     await handleEvent(event);
 
