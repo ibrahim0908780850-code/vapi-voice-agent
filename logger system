@@ -1,0 +1,8 @@
+export function logIntegration(data) {
+  console.log("📡 Integration Log:", {
+    type: data.type,
+    status: data.status,
+    event: data.eventType,
+    time: new Date().toISOString()
+  });
+}
