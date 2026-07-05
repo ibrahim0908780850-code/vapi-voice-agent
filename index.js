@@ -3,19 +3,22 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
 // =========================
-// ROUTES (FIXED)
+// ROUTES
 // =========================
 import whatsappRoutes from "./scr/routes/whatsapp.js";
 import aiGatewayRoutes from "./scr/routes/ai_gateway.js";
 
-// =========================
-// 🧠 META ROUTE (NEW)
-// =========================
+// 🧠 META ROUTE
 import metaRoutes from "./scr/routes/meta.webhook.js";
+
+// 📧 EMAIL ROUTE (NEW)
+import emailRoutes from "./scr/routes/email.webhook.js";
 
 const app = express();
 
-// ⚠️ Middleware
+// =========================
+// MIDDLEWARE
+// =========================
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -25,8 +28,11 @@ app.use(express.json({ limit: "2mb" }));
 app.use("/whatsapp", whatsappRoutes);
 app.use("/ai_gateway", aiGatewayRoutes);
 
-// 🔥 META MOUNT
+// 🟢 META
 app.use("/meta", metaRoutes);
+
+// 🟣 EMAIL
+app.use("/email", emailRoutes);
 
 // =========================
 // ENV
