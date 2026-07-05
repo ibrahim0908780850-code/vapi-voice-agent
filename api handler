@@ -1,0 +1,24 @@
+import axios from "axios";
+import { retry } from "../utils/retry.js";
+import { logIntegration } from "../utils/logger.js";
+
+export async function sendToAPI(integration, eventType, payload) {
+  return retry(async () => {
+    const res = await axios.post(integration.endpoint, {
+      event: eventType,
+      data: payload
+    }, {
+      headers: {
+        Authorization: `Bearer ${integration.api_key || ""}`
+      }
+    });
+
+    logIntegration({
+      type: "api",
+      status: "success",
+      eventType
+    });
+
+    return res.data;
+  });
+}
