@@ -1,0 +1,36 @@
+import express from "express";
+import { routeIntegration } from "./integration.dispatcher.js";
+
+const router = express.Router();
+
+/**
+ * 📥 استقبال كل رسائل Meta (IG + Messenger + WhatsApp)
+ */
+router.post("/meta/webhook", async (req, res) => {
+  try {
+
+    const body = req.body;
+
+    // تحديد نوع القناة
+    const entry = body.entry?.[0];
+    const messaging = entry?.messaging?.[0];
+
+    const event = {
+      tenant_id: extractTenant(entry),
+      channel: detectChannel(entry), // whatsapp | instagram | messenger
+      user_id: messaging.sender.id,
+      message: messaging.message?.text,
+      raw: body
+    };
+
+    await routeIntegration(event);
+
+    res.sendStatus(200);
+
+  } catch (err) {
+    console.error("Meta Webhook Error:", err.message);
+    res.sendStatus(500);
+  }
+});
+
+export default router;
