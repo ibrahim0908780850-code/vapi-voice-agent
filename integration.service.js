@@ -1,34 +1,36 @@
 import axios from "axios";
 import { getSupabase } from "../config/supabase.js";
+import { integrationQueue } from "../queues/integration.queue.js";
 
 /**
- * 🔥 MAIN ENTRY
- * أي event يدخل هنا يتم توزيعه
+ * 🚀 ROUTE EVENT (QUEUE VERSION)
+ * يدخل أي event إلى النظام بشكل async
  */
 export async function routeEvent(tenant_id, eventType, payload) {
   try {
-    const supabase = getSupabase();
+    // 1. إضافة الحدث إلى الـ Queue
+    await integrationQueue.add(
+      "process-integration",
+      {
+        tenant_id,
+        eventType,
+        payload
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 2000
+        }
+      }
+    );
 
-    // 1. جلب التكاملات الخاصة بالشركة
-    const { data: integrations, error } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("tenant_id", tenant_id)
-      .eq("active", true);
-
-    if (error) throw error;
-
-    if (!integrations || integrations.length === 0) {
-      console.log("⚠️ No integrations found");
-      return;
-    }
-
-    // 2. إرسال لكل تكامل
-    for (const integration of integrations) {
-      await handleIntegration(integration, eventType, payload);
-    }
+    console.log("📦 Event queued successfully:", {
+      tenant_id,
+      eventType
+    });
 
   } catch (err) {
-    console.error("❌ Integration Engine Error:", err.message);
+    console.error("❌ Queue Error:", err.message);
   }
 }
