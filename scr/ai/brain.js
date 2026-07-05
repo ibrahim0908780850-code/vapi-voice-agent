@@ -3,20 +3,26 @@ import { getPropertyRecommendations } from "../../ai/recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
 import { sendWhatsAppAutopilot } from "../../ai/whatsapp.autopilot.js";
 
+// 🧠 NEW: Unified sender layer
+import {
+  sendMetaMessage,
+  sendEmailMessage
+} from "../../handlers/channel.sender.js";
+
 /**
- * 🧠 CENTRAL AI BRAIN (MULTI-CHANNEL)
- * يدعم: WhatsApp / Messenger / Instagram / Email / VAPI
+ * 🧠 CENTRAL AI BRAIN (MULTI-CHANNEL PRODUCTION)
  */
 export async function generateAIResponse({
   tenant_id,
   lead_id,
   message,
-  channel,          // 🆕 مهم جداً
-  user_id,          // 🆕 Messenger / Instagram ID
-  email,            // 🆕 Email channel
+  channel,
+  user_id,
+  email,
   tenantContext
 }) {
   try {
+
     // =========================
     // 1. GET PROPERTY RECOMMENDATIONS
     // =========================
@@ -38,7 +44,7 @@ export async function generateAIResponse({
     }));
 
     // =========================
-    // 3. BUILD AI PROMPT (UNIFIED BRAIN)
+    // 3. BUILD PROMPT
     // =========================
     const prompt = `
 أنت موظف مبيعات عقارات ذكي داخل شركة.
@@ -52,22 +58,20 @@ ${channel}
 📌 رسالة العميل:
 ${message}
 
-🏠 العقارات المتاحة:
+🏠 العقارات:
 ${JSON.stringify(formattedRecommendations, null, 2)}
 
-⚠️ قواعد مهمة:
+⚠️ قواعد:
 - لا تخترع أي معلومات
 - استخدم العقارات فقط
 - اختر أفضل عقار واحد فقط إذا مناسب
 - إذا لا يوجد مناسب قل: "لا يوجد حالياً خيارات مناسبة"
-- هدفك الأساسي: إغلاق الصفقة أو حجز موعد
-- كن مختصر جدًا ومقنع
-- الأسلوب: موظف مبيعات محترف طبيعي
-- يجب أن يناسب الرد القناة (${channel})
+- كن مختصر ومقنع
+- الأسلوب: موظف مبيعات محترف
 
 🎯 المطلوب:
 رد مباشر مناسب لقناة ${channel}
-    `;
+`;
 
     // =========================
     // 4. GEMINI CALL
@@ -76,9 +80,7 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [
-          {
-            parts: [{ text: prompt }]
-          }
+          { parts: [{ text: prompt }] }
         ]
       }
     );
@@ -88,7 +90,7 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       "مرحباً 👋 كيف أساعدك؟";
 
     // =========================
-    // 5. AUTOPILOT (ANALYSIS ENGINE)
+    // 5. AUTOPILOT
     // =========================
     await runAutopilot({
       tenant_id,
@@ -99,10 +101,10 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
     });
 
     // =========================
-    // 6. CHANNEL ROUTING (MULTI-CHANNEL OUTPUT)
+    // 6. CHANNEL ROUTING (REAL SENDING)
     // =========================
 
-    // 🟢 WhatsApp
+    // 🟢 WhatsApp (existing system)
     if (channel === "whatsapp") {
       await sendWhatsAppAutopilot({
         tenant_id,
@@ -112,24 +114,28 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       });
     }
 
-    // 🟡 Messenger / Instagram (جاهز للتوصيل لاحقاً)
+    // 🟦 Messenger / Instagram (REAL SEND)
     if (channel === "messenger" || channel === "instagram") {
-      console.log("📩 Meta Response Ready:", {
-        user_id,
-        aiResponse
-      });
+      if (user_id) {
+        await sendMetaMessage({
+          user_id,
+          message: aiResponse
+        });
+      }
     }
 
-    // 🟣 Email (جاهز لاحقاً)
+    // 📧 Email (REAL SEND)
     if (channel === "email") {
-      console.log("📧 Email Response Ready:", {
-        email,
-        aiResponse
-      });
+      if (email) {
+        await sendEmailMessage({
+          email,
+          message: aiResponse
+        });
+      }
     }
 
     // =========================
-    // 7. RETURN RESULT
+    // 7. RETURN
     // =========================
     return {
       response: aiResponse,
