@@ -1,12 +1,12 @@
 import axios from "axios";
 import { getPropertyRecommendations } from "../../ai/recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
-import { sendWhatsAppAutopilot } from "../../ai/whatsapp.autopilot.js";
 
-// 🧠 NEW: Unified sender layer
+// 🧠 Unified Channel Sender (IMPORTANT)
 import {
   sendMetaMessage,
-  sendEmailMessage
+  sendEmailMessage,
+  sendWhatsAppMessage
 } from "../../handlers/channel.sender.js";
 
 /**
@@ -24,16 +24,13 @@ export async function generateAIResponse({
   try {
 
     // =========================
-    // 1. GET PROPERTY RECOMMENDATIONS
+    // 1. RECOMMENDATIONS
     // =========================
     const recommendations = await getPropertyRecommendations(
       tenant_id,
       lead_id
     );
 
-    // =========================
-    // 2. FORMAT DATA
-    // =========================
     const formattedRecommendations = recommendations.map((r) => ({
       title: r.property.title,
       price: r.property.price,
@@ -44,15 +41,15 @@ export async function generateAIResponse({
     }));
 
     // =========================
-    // 3. BUILD PROMPT
+    // 2. PROMPT
     // =========================
     const prompt = `
 أنت موظف مبيعات عقارات ذكي داخل شركة.
 
-📌 سياق الشركة والعميل:
+📌 سياق الشركة:
 ${tenantContext}
 
-📌 القناة الحالية:
+📌 القناة:
 ${channel}
 
 📌 رسالة العميل:
@@ -62,26 +59,22 @@ ${message}
 ${JSON.stringify(formattedRecommendations, null, 2)}
 
 ⚠️ قواعد:
-- لا تخترع أي معلومات
+- لا تخترع بيانات
 - استخدم العقارات فقط
-- اختر أفضل عقار واحد فقط إذا مناسب
-- إذا لا يوجد مناسب قل: "لا يوجد حالياً خيارات مناسبة"
+- اختر أفضل عقار واحد فقط
+- إذا لا يوجد قل: "لا يوجد حالياً خيارات مناسبة"
 - كن مختصر ومقنع
-- الأسلوب: موظف مبيعات محترف
 
-🎯 المطلوب:
-رد مباشر مناسب لقناة ${channel}
+🎯 الرد حسب القناة: ${channel}
 `;
 
     // =========================
-    // 4. GEMINI CALL
+    // 3. GEMINI
     // =========================
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
-        contents: [
-          { parts: [{ text: prompt }] }
-        ]
+        contents: [{ parts: [{ text: prompt }] }]
       }
     );
 
@@ -90,7 +83,7 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       "مرحباً 👋 كيف أساعدك؟";
 
     // =========================
-    // 5. AUTOPILOT
+    // 4. AUTOPILOT
     // =========================
     await runAutopilot({
       tenant_id,
@@ -101,41 +94,45 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
     });
 
     // =========================
-    // 6. CHANNEL ROUTING (REAL SENDING)
+    // 5. CHANNEL ROUTING (UNIFIED)
     // =========================
 
-    // 🟢 WhatsApp (existing system)
-    if (channel === "whatsapp") {
-      await sendWhatsAppAutopilot({
-        tenant_id,
-        lead_id,
-        recommendations: formattedRecommendations,
-        aiResponse
-      });
-    }
+    switch (channel) {
 
-    // 🟦 Messenger / Instagram (REAL SEND)
-    if (channel === "messenger" || channel === "instagram") {
-      if (user_id) {
-        await sendMetaMessage({
-          user_id,
+      // 🟢 WhatsApp
+      case "whatsapp":
+        await sendWhatsAppMessage({
+          tenant_id,
+          lead_id,
           message: aiResponse
         });
-      }
-    }
+        break;
 
-    // 📧 Email (REAL SEND)
-    if (channel === "email") {
-      if (email) {
-        await sendEmailMessage({
-          email,
-          message: aiResponse
-        });
-      }
+      // 🟦 Messenger / Instagram
+      case "messenger":
+      case "instagram":
+        if (user_id) {
+          await sendMetaMessage({
+            user_id,
+            message: aiResponse
+          });
+        }
+        break;
+
+      // 📧 Email
+      case "email":
+        if (email) {
+          await sendEmailMessage({
+            email,
+            subject: "رد من وكيل صالح العقاري",
+            message: aiResponse
+          });
+        }
+        break;
     }
 
     // =========================
-    // 7. RETURN
+    // 6. RETURN
     // =========================
     return {
       response: aiResponse,
