@@ -8,9 +8,14 @@ import crypto from "crypto";
 import whatsappRoutes from "./scr/routes/whatsapp.js";
 import aiGatewayRoutes from "./scr/routes/ai_gateway.js";
 
+// =========================
+// 🧠 META ROUTE (NEW)
+// =========================
+import metaRoutes from "./scr/routes/meta.webhook.js";
+
 const app = express();
 
-// ⚠️ مهم: Twilio يحتاج urlencoded
+// ⚠️ Middleware
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -19,6 +24,9 @@ app.use(express.json({ limit: "2mb" }));
 // =========================
 app.use("/whatsapp", whatsappRoutes);
 app.use("/ai_gateway", aiGatewayRoutes);
+
+// 🔥 META MOUNT
+app.use("/meta", metaRoutes);
 
 // =========================
 // ENV
@@ -42,7 +50,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// VAPI WEBHOOK
+// VAPI WEBHOOK (UNCHANGED)
 // =========================
 app.post("/webhook", async (req, res) => {
   try {
@@ -111,6 +119,7 @@ app.post("/webhook", async (req, res) => {
         }
       ]
     });
+
   } catch (e) {
     return res.json({
       results: [
@@ -124,7 +133,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // =========================
-// TWILIO WHATSAPP WEBHOOK
+// TWILIO WHATSAPP WEBHOOK (UNCHANGED)
 // =========================
 app.post("/whatsapp-webhook", async (req, res) => {
   try {
@@ -151,6 +160,7 @@ app.post("/whatsapp-webhook", async (req, res) => {
         <Message>تم استلام رسالتك يا عميل صالح 🚀</Message>
       </Response>
     `);
+
   } catch (e) {
     console.log("WhatsApp Error:", e);
 
