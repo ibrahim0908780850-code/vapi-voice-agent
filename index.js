@@ -8,10 +8,10 @@ import crypto from "crypto";
 import whatsappRoutes from "./scr/routes/whatsapp.js";
 import aiGatewayRoutes from "./scr/routes/ai_gateway.js";
 
-// 🧠 META ROUTE
+// 🧠 META
 import metaRoutes from "./scr/routes/meta.webhook.js";
 
-// 📧 EMAIL ROUTE (NEW)
+// 📧 EMAIL
 import emailRoutes from "./scr/routes/email.webhook.js";
 
 const app = express();
@@ -27,11 +27,7 @@ app.use(express.json({ limit: "2mb" }));
 // =========================
 app.use("/whatsapp", whatsappRoutes);
 app.use("/ai_gateway", aiGatewayRoutes);
-
-// 🟢 META
 app.use("/meta", metaRoutes);
-
-// 🟣 EMAIL
 app.use("/email", emailRoutes);
 
 // =========================
@@ -56,7 +52,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// VAPI WEBHOOK (UNCHANGED)
+// 🧠 VAPI WEBHOOK (UNCHANGED)
 // =========================
 app.post("/webhook", async (req, res) => {
   try {
@@ -139,7 +135,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // =========================
-// TWILIO WHATSAPP WEBHOOK (UNCHANGED)
+// 📱 WHATSAPP WEBHOOK (UNCHANGED)
 // =========================
 app.post("/whatsapp-webhook", async (req, res) => {
   try {
@@ -180,7 +176,7 @@ app.post("/whatsapp-webhook", async (req, res) => {
 });
 
 // =========================
-// CRM API
+// 📊 CRM API
 // =========================
 app.get("/api/leads", async (req, res) => {
   if (!supabase) {
@@ -192,7 +188,7 @@ app.get("/api/leads", async (req, res) => {
 });
 
 // =========================
-// START SERVER
+// 🚀 START SERVER
 // =========================
 app.listen(port, () => {
   console.log("🚀 SALIH CRM running on", port);
