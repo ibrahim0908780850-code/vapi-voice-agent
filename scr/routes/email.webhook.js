@@ -9,27 +9,30 @@ const router = express.Router();
  */
 router.post("/webhook", async (req, res) => {
   try {
-    const body = req.body;
+    const body = req.body || {};
 
     // =========================
-    // استخراج بيانات الإيميل
+    // بناء Event موحد للنظام
     // =========================
     const event = {
       tenant_id: body.tenant_id || "default",
       channel: "email",
       eventType: "email_received",
       payload: {
-        from: body.from,
-        to: body.to,
-        subject: body.subject,
-        message: body.text || body.html
+        from: body.from || body.email || "",
+        to: body.to || "",
+        subject: body.subject || "",
+        message: body.text || body.html || body.message || ""
       }
     };
 
-    console.log("📩 Email Event:", event);
+    console.log("📩 Email Event Received:", {
+      from: event.payload.from,
+      subject: event.payload.subject
+    });
 
     // =========================
-    // إرسال إلى نفس النظام (IMPORTANT)
+    // إرسال للنظام الموحد
     // =========================
     await handleEvent(event);
 
