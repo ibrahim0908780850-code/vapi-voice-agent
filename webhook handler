@@ -1,0 +1,18 @@
+import axios from "axios";
+import { retry } from "../utils/retry.js";
+import { logIntegration } from "../utils/logger.js";
+
+export async function sendWebhook(integration, eventType, payload) {
+  return retry(async () => {
+    await axios.post(integration.endpoint, {
+      event: eventType,
+      payload
+    });
+
+    logIntegration({
+      type: "webhook",
+      status: "success",
+      eventType
+    });
+  });
+}
