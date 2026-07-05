@@ -2,15 +2,18 @@ import axios from "axios";
 import { getPropertyRecommendations } from "../../ai/recommendation.engine.js";
 import { runAutopilot } from "./autopilot.engine.js";
 
-// 🧠 Unified Channel Sender (IMPORTANT)
 import {
   sendMetaMessage,
   sendEmailMessage,
   sendWhatsAppMessage
 } from "../../handlers/channel.sender.js";
 
+// 🧠 NEW: AI MEMORY + INTELLIGENCE
+import { getLeadMemory } from "../../ai/lead.memory.js";
+import { analyzeLeadIntelligence } from "../../ai/lead.intelligence.js";
+
 /**
- * 🧠 CENTRAL AI BRAIN (MULTI-CHANNEL PRODUCTION)
+ * 🧠 CENTRAL AI BRAIN (PRODUCTION READY)
  */
 export async function generateAIResponse({
   tenant_id,
@@ -19,12 +22,23 @@ export async function generateAIResponse({
   channel,
   user_id,
   email,
+  phone,
   tenantContext
 }) {
   try {
 
     // =========================
-    // 1. RECOMMENDATIONS
+    // 1. MEMORY + INTELLIGENCE
+    // =========================
+    const memory = await getLeadMemory(tenant_id, phone);
+
+    const intelligence = await analyzeLeadIntelligence({
+      tenant_id,
+      phone
+    });
+
+    // =========================
+    // 2. PROPERTY RECOMMENDATIONS
     // =========================
     const recommendations = await getPropertyRecommendations(
       tenant_id,
@@ -41,35 +55,41 @@ export async function generateAIResponse({
     }));
 
     // =========================
-    // 2. PROMPT
+    // 3. SMART PROMPT (NEW)
     // =========================
     const prompt = `
 أنت موظف مبيعات عقارات ذكي داخل شركة.
 
-📌 سياق الشركة:
+🏢 معلومات الشركة:
 ${tenantContext}
 
-📌 القناة:
-${channel}
+👤 معلومات العميل:
+- الحالة: ${intelligence.stage}
+- النقاط: ${intelligence.score}
+- الملخص: ${intelligence.summary}
 
-📌 رسالة العميل:
+📊 ذاكرة العميل:
+${memory?.messages?.map(m => m.message).join("\n") || "لا يوجد سجل"}
+
+📩 رسالة العميل:
 ${message}
 
-🏠 العقارات:
+🏠 العقارات المتاحة:
 ${JSON.stringify(formattedRecommendations, null, 2)}
 
-⚠️ قواعد:
+⚠️ قواعد مهمة:
 - لا تخترع بيانات
 - استخدم العقارات فقط
-- اختر أفضل عقار واحد فقط
-- إذا لا يوجد قل: "لا يوجد حالياً خيارات مناسبة"
-- كن مختصر ومقنع
+- اختر أفضل عقار واحد
+- إذا لا يوجد مناسب قل: "لا يوجد حالياً خيارات مناسبة"
+- كن مختصر ومقنع جداً
+- هدفك: إغلاق الصفقة أو حجز موعد
 
-🎯 الرد حسب القناة: ${channel}
+🎯 رد مناسب لقناة: ${channel}
 `;
 
     // =========================
-    // 3. GEMINI
+    // 4. GEMINI CALL
     // =========================
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -83,23 +103,25 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
       "مرحباً 👋 كيف أساعدك؟";
 
     // =========================
-    // 4. AUTOPILOT
+    // 5. AUTOPILOT (SMART VERSION)
     // =========================
     await runAutopilot({
       tenant_id,
       lead_id,
       channel,
       recommendations,
-      aiResponse
+      aiResponse,
+      intelligence: {
+        score: intelligence.score,
+        stage: intelligence.stage
+      }
     });
 
     // =========================
-    // 5. CHANNEL ROUTING (UNIFIED)
+    // 6. CHANNEL ROUTING (FIXED)
     // =========================
-
     switch (channel) {
 
-      // 🟢 WhatsApp
       case "whatsapp":
         await sendWhatsAppMessage({
           tenant_id,
@@ -108,7 +130,6 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
         });
         break;
 
-      // 🟦 Messenger / Instagram
       case "messenger":
       case "instagram":
         if (user_id) {
@@ -119,12 +140,11 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
         }
         break;
 
-      // 📧 Email
       case "email":
         if (email) {
           await sendEmailMessage({
             email,
-            subject: "رد من وكيل صالح العقاري",
+            subject: "رد من وكيل صالح العقاري 🧠",
             message: aiResponse
           });
         }
@@ -132,11 +152,12 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
     }
 
     // =========================
-    // 6. RETURN
+    // 7. RETURN
     // =========================
     return {
       response: aiResponse,
-      recommendations: formattedRecommendations
+      recommendations: formattedRecommendations,
+      intelligence
     };
 
   } catch (error) {
@@ -144,7 +165,8 @@ ${JSON.stringify(formattedRecommendations, null, 2)}
 
     return {
       response: "حدث خطأ مؤقت، حاول مرة أخرى لاحقاً.",
-      recommendations: []
+      recommendations: [],
+      intelligence: null
     };
   }
 }
