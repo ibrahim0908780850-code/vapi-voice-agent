@@ -7,13 +7,6 @@ import { runAutopilot }
 from "./autopilot.engine.js";
 
 
-import {
-  sendMetaMessage,
-  sendEmailMessage,
-  sendWhatsAppMessage
-} from "../handlers/channel.sender.js";
-
-
 import { getLeadMemory } 
 from "../../ai/memory.js";
 
@@ -89,9 +82,8 @@ try {
 
 
 
-
   // =========================
-  // PROPERTY RECOMMENDATION
+  // PROPERTY RECOMMENDATIONS
   // =========================
 
 
@@ -145,7 +137,6 @@ try {
 
 
 
-
   // =========================
   // AI PROMPT
   // =========================
@@ -156,6 +147,7 @@ try {
 أنت SALIH AI.
 
 أنت موظف مبيعات عقارية محترف داخل الشركة.
+
 
 معلومات الشركة:
 
@@ -231,7 +223,6 @@ ${channel}
 
 
 
-
   // =========================
   // GEMINI
   // =========================
@@ -240,6 +231,7 @@ ${channel}
   const response =
 
     await axios.post(
+
 
 `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-1.5-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
 
@@ -272,6 +264,7 @@ text:prompt
 
 
 
+
   const aiResponse =
 
     response
@@ -284,7 +277,6 @@ text:prompt
     ||
 
     "مرحباً 👋 كيف يمكنني مساعدتك؟";
-
 
 
 
@@ -311,16 +303,14 @@ text:prompt
     aiResponse,
 
 
-    intelligence:{
-
-      score:
-      intelligence.score,
+    intelligence,
 
 
-      stage:
-      intelligence.stage
+    user_id,
 
-    }
+    email,
+
+    phone
 
   });
 
@@ -333,116 +323,19 @@ text:prompt
 
 
   // =========================
-  // CHANNEL ROUTING
+  // RETURN
   // =========================
-
-
-  switch(channel){
-
-
-
-    case "whatsapp":
-
-
-      await sendWhatsAppMessage({
-
-        tenant_id,
-
-        lead_id,
-
-        message:
-        aiResponse
-
-      });
-
-
-    break;
-
-
-
-
-
-    case "messenger":
-
-    case "instagram":
-
-
-      if(user_id){
-
-
-        await sendMetaMessage({
-
-          user_id,
-
-          message:
-          aiResponse
-
-        });
-
-
-      }
-
-
-    break;
-
-
-
-
-
-    case "email":
-
-
-      if(email){
-
-
-        await sendEmailMessage({
-
-          email,
-
-
-          subject:
-          "رد من SALIH AI 🧠",
-
-
-          message:
-          aiResponse
-
-        });
-
-
-      }
-
-
-    break;
-
-
-
-
-
-    case "voice":
-
-
-      // Vapi يستلم الرد من ai_gateway
-      break;
-
-
-  }
-
-
-
-
-
-
-
 
 
   return {
 
     response:
+
     aiResponse,
 
 
     recommendations:
+
     formattedRecommendations,
 
 
@@ -464,6 +357,7 @@ catch(error){
 console.error(
 
 "🧠 SALIH BRAIN ERROR:",
+
 error.message
 
 );
@@ -474,14 +368,18 @@ return {
 
 
 response:
+
 "حدث خطأ مؤقت، حاول مرة أخرى لاحقاً.",
 
 
 recommendations:
+
 [],
 
 
-intelligence:null
+intelligence:
+
+null
 
 
 };
