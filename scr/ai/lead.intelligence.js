@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getLeadMemory } from "./lead.memory.js";
+import { getLeadMemory } from "./../ai/memory.js";
 
 /**
  * 🧠 AI LEAD INTELLIGENCE ENGINE
