@@ -18,7 +18,7 @@ import { getLeadMemory }
 from "../../ai/memory.js";
 
 import { analyzeLeadIntelligence } 
-from "../../ai/lead.intelligence.js";
+from "../ai/lead.intelligence.js";
 
 
 
