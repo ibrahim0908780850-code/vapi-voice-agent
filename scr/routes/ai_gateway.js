@@ -6,30 +6,52 @@ import { generateAIResponse } from "../ai/brain.js";
 import { getLeadMemory } from "../../ai/memory.js";
 import { buildAIContext } from "../../ai/build _context.js";
 import { analyzeDeal } from "../../ai/deal intelligence.js";
+import { resolveTenant } from "../utils/resolveTenant.js";
+
 
 const router = express.Router();
 
 
 router.post("/", async (req, res) => {
 
+
   const toolCallId =
     req.body?.message?.toolCalls?.[0]?.id ||
     crypto.randomUUID();
 
 
+
   try {
 
+
     // =========================
-    // TENANT
+    // TENANT RESOLUTION
     // =========================
 
     const tenant_id =
-      req.body?.message?.assistantId ||
-      req.headers["x-tenant-id"] ||
-      "default_tenant";
+      await resolveTenant(req);
 
 
-    const supabase = getSupabase(tenant_id);
+
+    const supabase =
+      getSupabase(tenant_id);
+
+
+
+
+    // =========================
+    // CHANNEL DETECTION
+    // =========================
+
+    const channel =
+      req.body?.message?.assistantId
+        ? "voice"
+        : req.body?.entry?.[0]?.changes?.[0]?.value?.metadata
+          ? "whatsapp"
+          : req.body?.entry?.[0]?.id
+            ? "messenger"
+            : "unknown";
+
 
 
 
@@ -39,17 +61,30 @@ router.post("/", async (req, res) => {
 
     const phone =
       req.body?.message?.customer?.phone ||
+      req.body?.entry?.[0]
+      ?.changes?.[0]
+      ?.value
+      ?.contacts?.[0]
+      ?.wa_id ||
       "unknown";
+
 
 
     const userMessage =
       req.body?.message?.text ||
+      req.body?.entry?.[0]
+      ?.changes?.[0]
+      ?.value
+      ?.messages?.[0]
+      ?.text
+      ?.body ||
       "";
 
 
 
+
     // =========================
-    // GET OR CREATE LEAD
+    // CREATE / UPDATE LEAD
     // =========================
 
     const { data: lead, error: leadError } =
@@ -57,19 +92,30 @@ router.post("/", async (req, res) => {
         .from("leads")
         .upsert(
           {
+
             tenant_id,
+
             phone,
-            source: "ai_gateway"
+
+            source: channel
+
           },
           {
-            onConflict: "phone,tenant_id"
+
+            onConflict:
+              "phone,tenant_id"
+
           }
         )
         .select()
         .single();
 
 
-    if (leadError) throw leadError;
+
+    if (leadError)
+      throw leadError;
+
+
 
 
 
@@ -85,52 +131,68 @@ router.post("/", async (req, res) => {
 
 
 
-    // =========================
-    // LOAD COMPANY CONTEXT
-    // =========================
 
+
+    // =========================
+    // COMPANY SETTINGS
+    // =========================
 
     const { data: company } =
       await supabase
         .from("company_settings")
         .select("*")
-        .eq("tenant_id", tenant_id)
+        .eq(
+          "tenant_id",
+          tenant_id
+        )
         .single();
 
 
 
-    // =========================
-    // LOAD AI AGENT
-    // =========================
 
+
+    // =========================
+    // AI AGENT
+    // =========================
 
     const { data: agent } =
       await supabase
         .from("ai_agents")
         .select("*")
-        .eq("tenant_id", tenant_id)
-        .eq("status", "active")
+        .eq(
+          "tenant_id",
+          tenant_id
+        )
+        .eq(
+          "status",
+          "active"
+        )
         .single();
 
 
 
-    // =========================
-    // LOAD KNOWLEDGE BASE
-    // =========================
 
+
+    // =========================
+    // KNOWLEDGE BASE
+    // =========================
 
     const { data: knowledge } =
       await supabase
         .from("ai_knowledge_base")
         .select("*")
-        .eq("tenant_id", tenant_id);
+        .eq(
+          "tenant_id",
+          tenant_id
+        );
+
+
 
 
 
     // =========================
     // BUILD AI CONTEXT
     // =========================
-
 
     const tenantContext =
       buildAIContext({
@@ -147,17 +209,26 @@ router.post("/", async (req, res) => {
 
 
 
+
+
     // =========================
     // AI RESPONSE
     // =========================
 
-
-    const aiReply =
+    const aiResult =
       await generateAIResponse({
 
         tenant_id,
 
-        message: userMessage,
+        lead_id:
+          lead.id,
+
+        message:
+          userMessage,
+
+        phone,
+
+        channel,
 
         tenantContext
 
@@ -165,10 +236,17 @@ router.post("/", async (req, res) => {
 
 
 
+    const aiReply =
+      aiResult.response ||
+      aiResult;
+
+
+
+
+
     // =========================
     // SAVE MESSAGE
     // =========================
-
 
     await supabase
       .from("messages")
@@ -176,17 +254,23 @@ router.post("/", async (req, res) => {
 
         tenant_id,
 
-        lead_id: lead.id,
+        lead_id:
+          lead.id,
 
         phone,
 
-        message: userMessage,
+        message:
+          userMessage,
 
-        ai_response: aiReply,
+        ai_response:
+          aiReply,
 
-        source: "ai_gateway"
+        source:
+          channel
 
       });
+
+
 
 
 
@@ -194,26 +278,30 @@ router.post("/", async (req, res) => {
     // UPDATE LEAD
     // =========================
 
-
     await supabase
       .from("leads")
       .update({
 
         last_activity:
-          new Date().toISOString(),
+          new Date()
+          .toISOString(),
 
         stage:
           "warm"
 
       })
-      .eq("id", lead.id);
+      .eq(
+        "id",
+        lead.id
+      );
+
+
 
 
 
     // =========================
-    // CRM LOG
+    // CRM ACTIVITY
     // =========================
-
 
     await supabase
       .from("crm_activities")
@@ -221,26 +309,34 @@ router.post("/", async (req, res) => {
 
         tenant_id,
 
-        lead_id: lead.id,
+        lead_id:
+          lead.id,
 
-        action: "ai_message",
+        action:
+          "ai_message",
 
-        note: userMessage
+        note:
+          userMessage
 
       });
 
 
 
-    // =========================
-    // LOAD HISTORY
-    // =========================
 
+
+
+    // =========================
+    // HISTORY
+    // =========================
 
     const { data: messages } =
       await supabase
         .from("messages")
         .select("*")
-        .eq("lead_id", lead.id);
+        .eq(
+          "lead_id",
+          lead.id
+        );
 
 
 
@@ -248,7 +344,10 @@ router.post("/", async (req, res) => {
       await supabase
         .from("calls")
         .select("*")
-        .eq("lead_id", lead.id);
+        .eq(
+          "lead_id",
+          lead.id
+        );
 
 
 
@@ -256,7 +355,10 @@ router.post("/", async (req, res) => {
       await supabase
         .from("appointments")
         .select("*")
-        .eq("lead_id", lead.id);
+        .eq(
+          "lead_id",
+          lead.id
+        );
 
 
 
@@ -264,7 +366,12 @@ router.post("/", async (req, res) => {
       await supabase
         .from("crm_activities")
         .select("*")
-        .eq("lead_id", lead.id);
+        .eq(
+          "lead_id",
+          lead.id
+        );
+
+
 
 
 
@@ -273,15 +380,16 @@ router.post("/", async (req, res) => {
     // DEAL INTELLIGENCE
     // =========================
 
-
     const dealResult =
       await analyzeDeal({
 
         lead,
 
-        messages: messages || [],
+        messages:
+          messages || [],
 
-        calls: calls || [],
+        calls:
+          calls || [],
 
         appointments:
           appointments || [],
@@ -294,19 +402,25 @@ router.post("/", async (req, res) => {
 
 
 
-    // =========================
-    // CREATE / UPDATE DEAL
-    // =========================
 
 
-    if (dealResult.score >= 70) {
+    // =========================
+    // DEAL MANAGEMENT
+    // =========================
+
+    if (
+      dealResult.score >= 70
+    ) {
 
 
       const { data: existingDeal } =
         await supabase
           .from("deals")
           .select("*")
-          .eq("lead_id", lead.id)
+          .eq(
+            "lead_id",
+            lead.id
+          )
           .single();
 
 
@@ -320,7 +434,8 @@ router.post("/", async (req, res) => {
 
             tenant_id,
 
-            lead_id: lead.id,
+            lead_id:
+              lead.id,
 
             title:
               `Deal - ${phone}`,
@@ -338,6 +453,7 @@ router.post("/", async (req, res) => {
               "open"
 
           });
+
 
 
       } else {
@@ -362,9 +478,14 @@ router.post("/", async (req, res) => {
             existingDeal.id
           );
 
+
       }
 
+
     }
+
+
+
 
 
 
@@ -372,10 +493,9 @@ router.post("/", async (req, res) => {
     // RESPONSE
     // =========================
 
-
     return res.json({
 
-      results: [
+      results:[
 
         {
 
@@ -386,11 +506,15 @@ router.post("/", async (req, res) => {
 
               success:true,
 
-              reply: aiReply,
+              reply:
+                aiReply,
 
-              lead_id: lead.id,
+              lead_id:
+                lead.id,
 
               tenant_id,
+
+              channel,
 
               deal_score:
                 dealResult.score,
@@ -408,10 +532,17 @@ router.post("/", async (req, res) => {
 
 
 
+
+
+
   } catch(err) {
 
 
-    console.error(err);
+    console.error(
+      "AI Gateway Error:",
+      err
+    );
+
 
 
     return res.json({
@@ -438,6 +569,7 @@ router.post("/", async (req, res) => {
 
 
   }
+
 
 });
 
