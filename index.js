@@ -20,6 +20,9 @@ from "./scr/routes/email.webhook.js";
 import vapiRoutes 
 from "./scr/routes/vapi.webhook.js";
 
+import crmRoutes 
+from "./scr/routes/crm.js";
+
 
 
 // =========================
@@ -99,6 +102,16 @@ app.use(
 app.use(
   "/vapi",
   vapiRoutes
+);
+
+
+
+
+// CRM
+
+app.use(
+  "/crm",
+  crmRoutes
 );
 
 
