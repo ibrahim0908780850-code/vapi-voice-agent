@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 
-import { redis } from "../config/redis.js";
+import { redis } from "../../src/config/redis.js";
 
 import { generateDailyReport }
 from "../ai/daily.report.engine.js";
