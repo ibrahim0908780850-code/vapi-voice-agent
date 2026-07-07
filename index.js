@@ -1,195 +1,181 @@
 import express from "express";
-import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+
 
 // =========================
 // ROUTES
 // =========================
-import whatsappRoutes from "./scr/routes/whatsapp.js";
-import aiGatewayRoutes from "./scr/routes/ai_gateway.js";
 
-// 🧠 META
-import metaRoutes from "./scr/routes/meta.webhook.js";
+import whatsappRoutes 
+from "./scr/routes/whatsapp.js";
 
-// 📧 EMAIL
-import emailRoutes from "./scr/routes/email.webhook.js";
+import aiGatewayRoutes 
+from "./scr/routes/ai_gateway.js";
+
+import metaRoutes 
+from "./scr/routes/meta.webhook.js";
+
+import emailRoutes 
+from "./scr/routes/email.webhook.js";
+
+import vapiRoutes 
+from "./scr/routes/vapi.webhook.js";
+
+
+
+// =========================
+// APP
+// =========================
 
 const app = express();
+
+
+
 
 // =========================
 // MIDDLEWARE
 // =========================
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json({ limit: "2mb" }));
+
+app.use(
+  express.urlencoded({
+    extended:false
+  })
+);
+
+
+app.use(
+  express.json({
+    limit:"2mb"
+  })
+);
+
+
+
+
 
 // =========================
-// ROUTE MOUNTING
+// CHANNEL ROUTES
 // =========================
-app.use("/whatsapp", whatsappRoutes);
-app.use("/ai_gateway", aiGatewayRoutes);
-app.use("/meta", metaRoutes);
-app.use("/email", emailRoutes);
 
-// =========================
-// ENV
-// =========================
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT } = process.env;
-const port = PORT || 3000;
 
-// =========================
-// SUPABASE INIT
-// =========================
-const supabase =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    : null;
+// WhatsApp
+
+app.use(
+  "/whatsapp",
+  whatsappRoutes
+);
+
+
+
+// AI CORE
+
+app.use(
+  "/ai_gateway",
+  aiGatewayRoutes
+);
+
+
+
+// Meta
+// Messenger + Instagram
+
+app.use(
+  "/meta",
+  metaRoutes
+);
+
+
+
+// Email
+
+app.use(
+  "/email",
+  emailRoutes
+);
+
+
+
+// Vapi Voice
+
+app.use(
+  "/vapi",
+  vapiRoutes
+);
+
+
+
+
+
+
 
 // =========================
 // HEALTH CHECK
 // =========================
-app.get("/", (req, res) => {
-  res.send("SALIH CRM RUNNING 🚀");
-});
 
-// =========================
-// 🧠 VAPI WEBHOOK (UNCHANGED)
-// =========================
-app.post("/webhook", async (req, res) => {
-  try {
-    const toolCallId =
-      req.body?.message?.toolCalls?.[0]?.id || crypto.randomUUID();
+app.get(
+  "/",
+  (req,res)=>{
 
-    if (!supabase) {
-      return res.json({
-        results: [
-          {
-            toolCallId,
-            result: JSON.stringify({ error: "no_db" })
-          }
-        ]
-      });
-    }
+    res.send(
+      "SALIH CRM RUNNING 🚀"
+    );
 
-    const calls = req.body?.message?.toolCalls;
-    const raw =
-      calls?.[0]?.function?.arguments ||
-      calls?.[0]?.arguments ||
-      calls?.[0]?.function?.args;
-
-    const tool =
-      typeof raw === "string" ? JSON.parse(raw) : raw || {};
-
-    const data = {
-      full_name: (tool.fullName || "").trim(),
-      phone: (tool.phone || "").trim(),
-      city: (tool.city || "").trim(),
-      budget: (tool.budget || "").trim(),
-      intent: (tool.intent || "").trim(),
-      property_type: (tool.propertyType || "").trim()
-    };
-
-    const { data: leads, error } = await supabase
-      .from("leads")
-      .upsert(
-        {
-          ...data,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "phone" }
-      )
-      .select();
-
-    if (error) {
-      return res.json({
-        results: [
-          {
-            toolCallId,
-            result: JSON.stringify({ error: error.message })
-          }
-        ]
-      });
-    }
-
-    return res.json({
-      results: [
-        {
-          toolCallId,
-          result: JSON.stringify({
-            success: true,
-            lead_id: leads?.[0]?.id
-          })
-        }
-      ]
-    });
-
-  } catch (e) {
-    return res.json({
-      results: [
-        {
-          toolCallId: crypto.randomUUID(),
-          result: JSON.stringify({ error: "server_error" })
-        }
-      ]
-    });
   }
+);
+
+
+
+
+
+
+// =========================
+// ERROR HANDLER
+// =========================
+
+app.use(
+(err,req,res,next)=>{
+
+
+console.error(
+"SERVER ERROR:",
+err
+);
+
+
+
+res.status(500)
+.json({
+
+error:
+"server_error"
+
 });
 
-// =========================
-// 📱 WHATSAPP WEBHOOK (UNCHANGED)
-// =========================
-app.post("/whatsapp-webhook", async (req, res) => {
-  try {
-    const message = req.body.Body;
-    const from = req.body.From;
 
-    console.log("📩 WhatsApp:", message);
-    console.log("📞 From:", from);
-
-    if (supabase) {
-      await supabase.from("leads").upsert(
-        {
-          phone: from,
-          intent: message,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "phone" }
-      );
-    }
-
-    res.set("Content-Type", "text/xml");
-    res.send(`
-      <Response>
-        <Message>تم استلام رسالتك يا عميل صالح 🚀</Message>
-      </Response>
-    `);
-
-  } catch (e) {
-    console.log("WhatsApp Error:", e);
-
-    res.set("Content-Type", "text/xml");
-    res.send(`
-      <Response>
-        <Message>حدث خطأ، حاول لاحقًا</Message>
-      </Response>
-    `);
-  }
 });
 
-// =========================
-// 📊 CRM API
-// =========================
-app.get("/api/leads", async (req, res) => {
-  if (!supabase) {
-    return res.status(500).json({ error: "Supabase not configured" });
-  }
 
-  const { data } = await supabase.from("leads").select("*");
-  res.json(data || []);
-});
+
+
+
 
 // =========================
-// 🚀 START SERVER
+// START SERVER
 // =========================
-app.listen(port, () => {
-  console.log("🚀 SALIH CRM running on", port);
-});
+
+const PORT =
+process.env.PORT || 3000;
+
+
+
+app.listen(
+PORT,
+()=>{
+
+
+console.log(
+`🚀 SALIH CRM running on port ${PORT}`
+);
+
+
+}
+);
