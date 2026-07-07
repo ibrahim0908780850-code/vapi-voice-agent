@@ -8,6 +8,7 @@ const router = express.Router();
 
 
 
+
 // =================================
 // CREATE INVITATION
 // =================================
@@ -19,12 +20,10 @@ try{
 
 
 const {
-
 tenant_id,
 email,
 role,
 invited_by
-
 }=req.body;
 
 
@@ -40,6 +39,7 @@ getSupabase(tenant_id);
 
 
 
+
 const {data,error}=
 
 await supabase
@@ -50,21 +50,28 @@ tenant_id,
 
 email,
 
-role,
+role:
+role || "agent",
 
 token,
 
 invited_by,
 
+status:
+"pending",
+
 expires_at:
+
 new Date(
-Date.now()+1000*60*60*24*7
+Date.now()+7*24*60*60*1000
 )
 .toISOString()
+
 
 })
 .select()
 .single();
+
 
 
 
@@ -73,11 +80,13 @@ throw error;
 
 
 
+
 res.json({
 
 success:true,
 
 invite_url:
+
 `https://salih.ai/invite/${token}`,
 
 invitation:data
@@ -85,15 +94,16 @@ invitation:data
 });
 
 
+
 }
 
-catch(err){
+catch(error){
 
 
 res.status(500)
 .json({
 
-error:err.message
+error:error.message
 
 });
 
@@ -102,6 +112,9 @@ error:err.message
 
 
 });
+
+
+
 
 
 
@@ -124,34 +137,59 @@ token,
 
 auth_user_id,
 
-full_name,
-
-email
+full_name
 
 }=req.body;
 
 
 
-// البحث عن الدعوة
+
+
+const supabaseMain =
+getSupabase();
+
+
+
 
 
 const {data:invite,error}=
 
-await getSupabase()
+await supabaseMain
 .from("invitations")
 .select("*")
 .eq(
 "token",
 token
 )
+.eq(
+"status",
+"pending"
+)
 .single();
+
 
 
 
 if(error || !invite){
 
 throw new Error(
-"Invitation not found"
+"Invalid invitation"
+);
+
+}
+
+
+
+
+
+if(
+new Date(invite.expires_at)
+<
+new Date()
+){
+
+throw new Error(
+"Invitation expired"
 );
 
 }
@@ -169,9 +207,6 @@ invite.tenant_id
 
 
 
-// إنشاء المستخدم
-
-
 const {data:user,error:userError}=
 
 await supabase
@@ -185,14 +220,20 @@ invite.tenant_id,
 
 full_name,
 
-email,
+email:
+invite.email,
 
 role:
-invite.role
+invite.role,
+
+is_active:
+true
 
 })
 .select()
 .single();
+
+
 
 
 
@@ -203,8 +244,6 @@ throw userError;
 
 
 
-
-// إضافة الصلاحية
 
 
 await supabase
@@ -228,10 +267,7 @@ invite.role
 
 
 
-// تحديث الدعوة
-
-
-await supabase
+await supabaseMain
 .from("invitations")
 .update({
 
@@ -248,9 +284,13 @@ invite.id
 
 
 
+
 res.json({
 
 success:true,
+
+message:
+"User joined company",
 
 user
 
@@ -258,16 +298,16 @@ user
 
 
 
+
 }
 
-catch(err){
+catch(error){
 
 
 res.status(500)
 .json({
 
-error:
-err.message
+error:error.message
 
 });
 
