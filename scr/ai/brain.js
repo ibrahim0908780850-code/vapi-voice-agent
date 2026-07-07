@@ -14,7 +14,6 @@ import {
 } from "../../handlers/channel.sender.js";
 
 
-// 🧠 MEMORY + INTELLIGENCE
 import { getLeadMemory } 
 from "../../ai/lead.memory.js";
 
@@ -25,8 +24,10 @@ from "../../ai/lead.intelligence.js";
 
 /**
  * 🧠 SALIH CENTRAL AI BRAIN
- * Voice + WhatsApp + Meta + Email
+ * Voice + WhatsApp + Messenger + Instagram + Email
  */
+
+
 export async function generateAIResponse({
 
   tenant_id,
@@ -59,6 +60,8 @@ try {
 
 
 
+
+
   // =========================
   // LEAD INTELLIGENCE
   // =========================
@@ -70,50 +73,72 @@ try {
 
       phone
 
-    });
+    }) || {
+
+      stage:"new",
+
+      score:0,
+
+      summary:""
+
+    };
+
+
+
 
 
 
 
 
   // =========================
-  // PROPERTY ENGINE
+  // PROPERTY RECOMMENDATION
   // =========================
+
 
   const recommendations =
+
     await getPropertyRecommendations(
 
       tenant_id,
 
       lead_id
 
-    );
+    ) || [];
+
 
 
 
 
   const formattedRecommendations =
+
     recommendations.map(r => ({
 
       title:
-        r.property.title,
+      r.property?.title || "",
+
 
       price:
-        r.property.price,
+      r.property?.price || "",
+
 
       city:
-        r.property.city,
+      r.property?.city || "",
+
 
       type:
-        r.property.type,
+      r.property?.type || "",
+
 
       bedrooms:
-        r.property.bedrooms,
+      r.property?.bedrooms || "",
+
 
       score:
-        r.score
+      r.score || 0
 
     }));
+
+
 
 
 
@@ -128,35 +153,39 @@ try {
 
   const prompt = `
 
-أنت SALIH AI، موظف مبيعات عقاري ذكي.
+أنت SALIH AI.
 
-أنت تعمل داخل شركة:
+أنت موظف مبيعات عقارية محترف داخل الشركة.
+
+معلومات الشركة:
 
 ${tenantContext}
 
 
 
-👤 حالة العميل:
+حالة العميل:
 
 المرحلة:
 ${intelligence.stage}
 
+
 النقاط:
 ${intelligence.score}
+
 
 الملخص:
 ${intelligence.summary}
 
 
 
-🧠 ذاكرة العميل:
+ذاكرة العميل:
 
 ${
 memory?.messages
 ?.map(m => m.message)
 .join("\n")
 ||
-"لا يوجد"
+"لا يوجد سجل سابق"
 }
 
 
@@ -177,15 +206,15 @@ null,
 
 
 
-القواعد:
+قواعد العمل:
 
-- تحدث باسم الشركة فقط.
+- تحدث باسم الشركة.
 - لا تخترع معلومات.
-- استخدم البيانات المتوفرة فقط.
-- اقترح عقاراً مناسباً إذا وجد.
-- حاول حجز موعد.
-- اجعل الرد قصيراً ومقنعاً.
-- لا تذكر أنك ذكاء اصطناعي.
+- استخدم البيانات الموجودة فقط.
+- اقترح العقار الأنسب.
+- حاول تحويل العميل إلى موعد.
+- اجعل الرد مختصر واحترافي.
+- لا تقل أنك ذكاء اصطناعي.
 
 
 
@@ -201,12 +230,15 @@ ${channel}
 
 
 
+
+
   // =========================
   // GEMINI
   // =========================
 
 
   const response =
+
     await axios.post(
 
 `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-1.5-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -221,7 +253,9 @@ contents:[
 parts:[
 
 {
+
 text:prompt
+
 }
 
 ]
@@ -236,20 +270,20 @@ text:prompt
 
 
 
-const aiResponse =
 
-response
-?.data
-?.candidates?.[0]
-?.content
-?.parts?.[0]
-?.text
 
-||
+  const aiResponse =
 
-"مرحباً 👋 كيف يمكنني مساعدتك؟";
+    response
+    ?.data
+    ?.candidates?.[0]
+    ?.content
+    ?.parts?.[0]
+    ?.text
 
+    ||
 
+    "مرحباً 👋 كيف يمكنني مساعدتك؟";
 
 
 
@@ -257,160 +291,166 @@ response
 
 
 
-// =========================
-// AUTOPILOT
-// =========================
 
 
-await runAutopilot({
+  // =========================
+  // AUTOPILOT
+  // =========================
 
-tenant_id,
 
-lead_id,
+  await runAutopilot({
 
-channel,
+    tenant_id,
 
-recommendations,
+    lead_id,
 
-aiResponse,
+    channel,
 
-intelligence:{
+    recommendations,
 
-score:
-intelligence.score,
+    aiResponse,
 
-stage:
-intelligence.stage
 
-}
+    intelligence:{
 
-});
+      score:
+      intelligence.score,
 
 
+      stage:
+      intelligence.stage
 
+    }
 
+  });
 
 
 
 
-// =========================
-// CHANNEL ROUTER
-// =========================
 
 
-switch(channel){
 
 
 
-case "whatsapp":
+  // =========================
+  // CHANNEL ROUTING
+  // =========================
 
-await sendWhatsAppMessage({
 
-tenant_id,
+  switch(channel){
 
-lead_id,
 
-message:
-aiResponse
 
-});
+    case "whatsapp":
 
-break;
 
+      await sendWhatsAppMessage({
 
+        tenant_id,
 
+        lead_id,
 
+        message:
+        aiResponse
 
-case "messenger":
+      });
 
-case "instagram":
 
+    break;
 
-if(user_id){
 
-await sendMetaMessage({
 
-user_id,
 
-message:
-aiResponse
 
-});
+    case "messenger":
 
-}
+    case "instagram":
 
 
-break;
+      if(user_id){
 
 
+        await sendMetaMessage({
 
+          user_id,
 
+          message:
+          aiResponse
 
-case "email":
+        });
 
 
-if(email){
+      }
 
 
-await sendEmailMessage({
+    break;
 
-email,
 
-subject:
-"رد من SALIH AI 🧠",
 
-message:
-aiResponse
 
-});
 
+    case "email":
 
-}
 
+      if(email){
 
-break;
 
+        await sendEmailMessage({
 
+          email,
 
 
+          subject:
+          "رد من SALIH AI 🧠",
 
-// VAPI VOICE
-case "voice":
 
+          message:
+          aiResponse
 
-/*
+        });
 
-لا إرسال خارجي
 
-Vapi يأخذ الرد من gateway
+      }
 
-*/
 
+    break;
 
-break;
 
 
-}
 
 
+    case "voice":
 
 
+      // Vapi يستلم الرد من ai_gateway
+      break;
 
-return {
 
+  }
 
-response:
-aiResponse,
 
 
-recommendations:
-formattedRecommendations,
 
 
-intelligence
 
 
-};
+
+
+  return {
+
+    response:
+    aiResponse,
+
+
+    recommendations:
+    formattedRecommendations,
+
+
+    intelligence
+
+  };
+
+
 
 
 
@@ -441,11 +481,11 @@ recommendations:
 [],
 
 
-intelligence:
-null
+intelligence:null
 
 
 };
+
 
 
 }
