@@ -6,7 +6,7 @@ import { generateAIResponse } from "../ai/brain.js";
 
 import { getLeadMemory } from "../../ai/memory.js";
 import { buildAIContext } from "../../ai/build _context.js";
-import { analyzeDeal } from "../ai/deal intelligence.js";
+import { analyzeDeal } from "../../ai/deal intelligence.js";
 
 import { resolveTenant } from "../utils/resolveTenant.js";
 
