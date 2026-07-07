@@ -3,13 +3,16 @@ import crypto from "crypto";
 
 import { getSupabase } from "../config/supabase.js";
 import { generateAIResponse } from "../ai/brain.js";
+
 import { getLeadMemory } from "../../ai/memory.js";
 import { buildAIContext } from "../../ai/build _context.js";
 import { analyzeDeal } from "../../ai/deal intelligence.js";
+
 import { resolveTenant } from "../utils/resolveTenant.js";
 
 
 const router = express.Router();
+
 
 
 router.post("/", async (req, res) => {
@@ -39,18 +42,39 @@ router.post("/", async (req, res) => {
 
 
 
+
     // =========================
-    // CHANNEL DETECTION
+    // CHANNEL
     // =========================
 
     const channel =
-      req.body?.message?.assistantId
-        ? "voice"
-        : req.body?.entry?.[0]?.changes?.[0]?.value?.metadata
+      req.headers["x-channel"] ||
+
+      (
+        req.body?.message?.assistantId
+          ? "voice"
+
+          :
+
+        req.body?.entry?.[0]
+          ?.changes?.[0]
+          ?.value
+          ?.metadata
+
           ? "whatsapp"
-          : req.body?.entry?.[0]?.id
-            ? "messenger"
-            : "unknown";
+
+          :
+
+        req.body?.entry?.[0]?.id
+
+          ? "messenger"
+
+          :
+
+        "unknown"
+      );
+
+
 
 
 
@@ -59,26 +83,36 @@ router.post("/", async (req, res) => {
     // USER DATA
     // =========================
 
+
     const phone =
       req.body?.message?.customer?.phone ||
+
       req.body?.entry?.[0]
       ?.changes?.[0]
       ?.value
       ?.contacts?.[0]
       ?.wa_id ||
+
       "unknown";
 
 
 
+
     const userMessage =
+
       req.body?.message?.text ||
+
       req.body?.entry?.[0]
       ?.changes?.[0]
       ?.value
       ?.messages?.[0]
       ?.text
       ?.body ||
+
       "";
+
+
+
 
 
 
@@ -87,28 +121,33 @@ router.post("/", async (req, res) => {
     // CREATE / UPDATE LEAD
     // =========================
 
+
     const { data: lead, error: leadError } =
+
       await supabase
-        .from("leads")
-        .upsert(
-          {
+      .from("leads")
+      .upsert(
 
-            tenant_id,
+        {
 
-            phone,
+          tenant_id,
 
-            source: channel
+          phone,
 
-          },
-          {
+          source: channel
 
-            onConflict:
-              "phone,tenant_id"
+        },
 
-          }
-        )
-        .select()
-        .single();
+        {
+
+          onConflict:
+          "phone,tenant_id"
+
+        }
+
+      )
+      .select()
+      .single();
 
 
 
@@ -119,11 +158,15 @@ router.post("/", async (req, res) => {
 
 
 
+
+
     // =========================
-    // LOAD MEMORY
+    // MEMORY
     // =========================
 
+
     const memory =
+
       await getLeadMemory(
         tenant_id,
         phone
@@ -133,19 +176,26 @@ router.post("/", async (req, res) => {
 
 
 
+
+
     // =========================
-    // COMPANY SETTINGS
+    // COMPANY
     // =========================
 
+
     const { data: company } =
+
       await supabase
-        .from("company_settings")
-        .select("*")
-        .eq(
-          "tenant_id",
-          tenant_id
-        )
-        .single();
+      .from("company_settings")
+      .select("*")
+      .eq(
+        "tenant_id",
+        tenant_id
+      )
+      .single();
+
+
+
 
 
 
@@ -155,19 +205,24 @@ router.post("/", async (req, res) => {
     // AI AGENT
     // =========================
 
+
     const { data: agent } =
+
       await supabase
-        .from("ai_agents")
-        .select("*")
-        .eq(
-          "tenant_id",
-          tenant_id
-        )
-        .eq(
-          "status",
-          "active"
-        )
-        .single();
+      .from("ai_agents")
+      .select("*")
+      .eq(
+        "tenant_id",
+        tenant_id
+      )
+      .eq(
+        "status",
+        "active"
+      )
+      .single();
+
+
+
 
 
 
@@ -177,24 +232,31 @@ router.post("/", async (req, res) => {
     // KNOWLEDGE BASE
     // =========================
 
+
     const { data: knowledge } =
+
       await supabase
-        .from("ai_knowledge_base")
-        .select("*")
-        .eq(
-          "tenant_id",
-          tenant_id
-        );
+      .from("ai_knowledge_base")
+      .select("*")
+      .eq(
+        "tenant_id",
+        tenant_id
+      );
+
+
+
 
 
 
 
 
     // =========================
-    // BUILD AI CONTEXT
+    // BUILD CONTEXT
     // =========================
+
 
     const tenantContext =
+
       buildAIContext({
 
         memory,
@@ -211,20 +273,25 @@ router.post("/", async (req, res) => {
 
 
 
+
+
+
     // =========================
-    // AI RESPONSE
+    // AI BRAIN
     // =========================
 
+
     const aiResult =
+
       await generateAIResponse({
 
         tenant_id,
 
         lead_id:
-          lead.id,
+        lead.id,
 
         message:
-          userMessage,
+        userMessage,
 
         phone,
 
@@ -236,9 +303,14 @@ router.post("/", async (req, res) => {
 
 
 
+
     const aiReply =
+
       aiResult.response ||
       aiResult;
+
+
+
 
 
 
@@ -248,27 +320,32 @@ router.post("/", async (req, res) => {
     // SAVE MESSAGE
     // =========================
 
+
     await supabase
-      .from("messages")
-      .insert({
+    .from("messages")
+    .insert({
 
-        tenant_id,
+      tenant_id,
 
-        lead_id:
-          lead.id,
+      lead_id:
+      lead.id,
 
-        phone,
+      phone,
 
-        message:
-          userMessage,
+      message:
+      userMessage,
 
-        ai_response:
-          aiReply,
+      ai_response:
+      aiReply,
 
-        source:
-          channel
+      source:
+      channel
 
-      });
+    });
+
+
+
+
 
 
 
@@ -278,22 +355,26 @@ router.post("/", async (req, res) => {
     // UPDATE LEAD
     // =========================
 
+
     await supabase
-      .from("leads")
-      .update({
+    .from("leads")
+    .update({
 
-        last_activity:
-          new Date()
-          .toISOString(),
+      last_activity:
+      new Date().toISOString(),
 
-        stage:
-          "warm"
+      stage:
+      "warm"
 
-      })
-      .eq(
-        "id",
-        lead.id
-      );
+    })
+    .eq(
+      "id",
+      lead.id
+    );
+
+
+
+
 
 
 
@@ -303,22 +384,26 @@ router.post("/", async (req, res) => {
     // CRM ACTIVITY
     // =========================
 
+
     await supabase
-      .from("crm_activities")
-      .insert({
+    .from("crm_activities")
+    .insert({
 
-        tenant_id,
+      tenant_id,
 
-        lead_id:
-          lead.id,
+      lead_id:
+      lead.id,
 
-        action:
-          "ai_message",
+      action:
+      "ai_message",
 
-        note:
-          userMessage
+      note:
+      userMessage
 
-      });
+    });
+
+
+
 
 
 
@@ -329,47 +414,55 @@ router.post("/", async (req, res) => {
     // HISTORY
     // =========================
 
+
     const { data: messages } =
+
       await supabase
-        .from("messages")
-        .select("*")
-        .eq(
-          "lead_id",
-          lead.id
-        );
+      .from("messages")
+      .select("*")
+      .eq(
+        "lead_id",
+        lead.id
+      );
 
 
 
     const { data: calls } =
+
       await supabase
-        .from("calls")
-        .select("*")
-        .eq(
-          "lead_id",
-          lead.id
-        );
+      .from("calls")
+      .select("*")
+      .eq(
+        "lead_id",
+        lead.id
+      );
 
 
 
     const { data: appointments } =
+
       await supabase
-        .from("appointments")
-        .select("*")
-        .eq(
-          "lead_id",
-          lead.id
-        );
+      .from("appointments")
+      .select("*")
+      .eq(
+        "lead_id",
+        lead.id
+      );
 
 
 
     const { data: activities } =
+
       await supabase
-        .from("crm_activities")
-        .select("*")
-        .eq(
-          "lead_id",
-          lead.id
-        );
+      .from("crm_activities")
+      .select("*")
+      .eq(
+        "lead_id",
+        lead.id
+      );
+
+
+
 
 
 
@@ -380,22 +473,24 @@ router.post("/", async (req, res) => {
     // DEAL INTELLIGENCE
     // =========================
 
+
     const dealResult =
+
       await analyzeDeal({
 
         lead,
 
         messages:
-          messages || [],
+        messages || [],
 
         calls:
-          calls || [],
+        calls || [],
 
         appointments:
-          appointments || [],
+        appointments || [],
 
         activities:
-          activities || []
+        activities || []
 
       });
 
@@ -404,79 +499,85 @@ router.post("/", async (req, res) => {
 
 
 
+
+
+
     // =========================
-    // DEAL MANAGEMENT
+    // DEAL CREATE UPDATE
     // =========================
 
-    if (
-      dealResult.score >= 70
-    ) {
+
+    if(dealResult.score >= 70){
 
 
       const { data: existingDeal } =
-        await supabase
-          .from("deals")
-          .select("*")
-          .eq(
-            "lead_id",
-            lead.id
-          )
-          .single();
-
-
-
-      if (!existingDeal) {
-
 
         await supabase
-          .from("deals")
-          .insert({
-
-            tenant_id,
-
-            lead_id:
-              lead.id,
-
-            title:
-              `Deal - ${phone}`,
-
-            stage:
-              "qualified",
-
-            probability:
-              dealResult.score,
-
-            value:
-              dealResult.expectedValue,
-
-            status:
-              "open"
-
-          });
+        .from("deals")
+        .select("*")
+        .eq(
+          "lead_id",
+          lead.id
+        )
+        .single();
 
 
 
-      } else {
+
+      if(!existingDeal){
 
 
         await supabase
-          .from("deals")
-          .update({
+        .from("deals")
+        .insert({
 
-            probability:
-              dealResult.score,
+          tenant_id,
 
-            value:
-              dealResult.expectedValue,
+          lead_id:
+          lead.id,
 
-            stage:
-              dealResult.stage
+          title:
+          `Deal - ${phone}`,
 
-          })
-          .eq(
-            "id",
-            existingDeal.id
-          );
+          stage:
+          "qualified",
+
+          probability:
+          dealResult.score,
+
+          value:
+          dealResult.expectedValue,
+
+          status:
+          "open"
+
+        });
+
+
+
+      }
+
+      else{
+
+
+        await supabase
+        .from("deals")
+        .update({
+
+          probability:
+          dealResult.score,
+
+          value:
+          dealResult.expectedValue,
+
+          stage:
+          dealResult.stage
+
+        })
+        .eq(
+          "id",
+          existingDeal.id
+        );
 
 
       }
@@ -489,9 +590,13 @@ router.post("/", async (req, res) => {
 
 
 
+
+
+
     // =========================
     // RESPONSE
     // =========================
+
 
     return res.json({
 
@@ -502,27 +607,27 @@ router.post("/", async (req, res) => {
           toolCallId,
 
           result:
-            JSON.stringify({
+          JSON.stringify({
 
-              success:true,
+            success:true,
 
-              reply:
-                aiReply,
+            reply:
+            aiReply,
 
-              lead_id:
-                lead.id,
+            lead_id:
+            lead.id,
 
-              tenant_id,
+            tenant_id,
 
-              channel,
+            channel,
 
-              deal_score:
-                dealResult.score,
+            deal_score:
+            dealResult.score,
 
-              deal_stage:
-                dealResult.stage
+            deal_stage:
+            dealResult.stage
 
-            })
+          })
 
         }
 
@@ -535,7 +640,9 @@ router.post("/", async (req, res) => {
 
 
 
-  } catch(err) {
+  }
+
+  catch(err){
 
 
     console.error(
@@ -554,12 +661,12 @@ router.post("/", async (req, res) => {
           toolCallId,
 
           result:
-            JSON.stringify({
+          JSON.stringify({
 
-              error:
-                "gateway_error"
+            error:
+            "gateway_error"
 
-            })
+          })
 
         }
 
@@ -572,6 +679,7 @@ router.post("/", async (req, res) => {
 
 
 });
+
 
 
 export default router;
