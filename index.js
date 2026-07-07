@@ -7,7 +7,7 @@ import express from "express";
 
 
 // Export Worker
-import "./scr/workers/export.worker.js";
+import "./scr/workers/export.work.js";
 
 
 // Scheduler Worker
