@@ -4,7 +4,7 @@ import { authMiddleware }
 from "../middleware/auth.js";
 
 import { extractTenant } 
-from "../middleware/tenant.js";
+from "../../middleware/tenant.js";
 
 
 const router = express.Router();
