@@ -11,7 +11,7 @@ import {
   sendMetaMessage,
   sendEmailMessage,
   sendWhatsAppMessage
-} from "../../handlers/channel.sender.js";
+} from "../handlers/channel.sender.js";
 
 
 import { getLeadMemory } 
