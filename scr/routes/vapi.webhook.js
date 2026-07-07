@@ -6,16 +6,14 @@ const router = express.Router();
 
 
 // =========================
-// VAPI WEBHOOK
+// VAPI VOICE WEBHOOK
 // =========================
 
 router.post("/", async (req, res) => {
 
-
   const toolCallId =
     req.body?.message?.toolCalls?.[0]?.id ||
     crypto.randomUUID();
-
 
 
   try {
@@ -25,21 +23,17 @@ router.post("/", async (req, res) => {
     // EXTRACT VAPI DATA
     // =========================
 
-
     const assistantId =
       req.body?.message?.assistantId;
-
 
 
     const customer =
       req.body?.message?.customer || {};
 
 
-
     const phone =
       customer.phone ||
       "unknown";
-
 
 
     const userMessage =
@@ -48,10 +42,8 @@ router.post("/", async (req, res) => {
 
 
 
-
-
     // =========================
-    // SEND TO AI GATEWAY
+    // FORWARD TO AI GATEWAY
     // =========================
 
 
@@ -62,10 +54,12 @@ router.post("/", async (req, res) => {
 
         {
 
+          channel: "voice",
 
           message: {
 
             assistantId,
+
 
             customer: {
 
@@ -81,11 +75,10 @@ router.post("/", async (req, res) => {
             toolCalls:
               req.body?.message?.toolCalls || []
 
-
           }
 
-
         },
+
 
         {
 
@@ -103,16 +96,8 @@ router.post("/", async (req, res) => {
 
 
 
-
-    const result =
-      response.data;
-
-
-
-
-
     // =========================
-    // RETURN TO VAPI
+    // SEND RESPONSE TO VAPI
     // =========================
 
 
@@ -130,8 +115,10 @@ router.post("/", async (req, res) => {
 
               success:true,
 
-              data:
-                result
+
+              reply:
+                response.data?.results?.[0]?.result || "",
+
 
             })
 
@@ -140,8 +127,6 @@ router.post("/", async (req, res) => {
       ]
 
     });
-
-
 
 
 
@@ -183,7 +168,6 @@ router.post("/", async (req, res) => {
 
 
 });
-
 
 
 export default router;
