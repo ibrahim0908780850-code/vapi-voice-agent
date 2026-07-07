@@ -1,5 +1,5 @@
 import express from "express";
-import { handleEvent } from "../handlers/integration.handler.js";
+import { handleEvent } from "../scr/handlers/integration.handler.js";
 
 const router = express.Router();
 
