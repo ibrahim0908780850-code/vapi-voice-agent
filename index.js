@@ -2,6 +2,16 @@ import express from "express";
 
 
 // =========================
+// START BACKGROUND WORKERS
+// =========================
+
+// Export Worker
+import "./scr/workers/export.worker.js";
+
+
+
+
+// =========================
 // ROUTES
 // =========================
 
@@ -106,13 +116,13 @@ app.use(
 
 
 
-
 // CRM
 
 app.use(
   "/crm",
   crmRoutes
 );
+
 
 
 
@@ -128,12 +138,38 @@ app.get(
   "/",
   (req,res)=>{
 
-    res.send(
-      "SALIH CRM RUNNING 🚀"
-    );
+    res.json({
+
+      status:
+      "SALIH CRM RUNNING 🚀",
+
+      services:{
+        
+        whatsapp:
+        "active",
+
+        meta:
+        "active",
+
+        email:
+        "active",
+
+        vapi:
+        "active",
+
+        crm:
+        "active",
+
+        export_worker:
+        "active"
+
+      }
+
+    });
 
   }
 );
+
 
 
 
@@ -145,6 +181,7 @@ app.get(
 // =========================
 
 app.use(
+
 (err,req,res,next)=>{
 
 
@@ -164,7 +201,10 @@ error:
 });
 
 
-});
+}
+
+);
+
 
 
 
@@ -181,7 +221,9 @@ process.env.PORT || 3000;
 
 
 app.listen(
+
 PORT,
+
 ()=>{
 
 
@@ -191,4 +233,5 @@ console.log(
 
 
 }
+
 );
