@@ -3,7 +3,7 @@ import { Worker } from "bullmq";
 import { redis } from "../../src/config/redis.js";
 
 import { generateExport }
-from "../ai/export.engine.js...";
+from "../ai/export.engine.js";
 
 
 
