@@ -17,6 +17,17 @@ import "./scr/workers/scheduler.worker.js";
 
 
 // =========================
+// JOBS
+// =========================
+
+import { startScheduler }
+
+from "./scr/jobs/scheduler.jobs.js";
+
+
+
+
+// =========================
 // ROUTES IMPORT
 // =========================
 
@@ -49,6 +60,10 @@ import invitationRoutes
 from "./scr/routes/invitations.js";
 
 
+import dashboardRoutes
+from "./scr/routes/dashboard.js";
+
+
 
 
 
@@ -58,6 +73,7 @@ from "./scr/routes/invitations.js";
 
 
 const app = express();
+
 
 
 
@@ -94,14 +110,10 @@ limit:"2mb"
 
 
 
+
 // =========================
 // START SCHEDULER
 // =========================
-
-
-import { startScheduler }
-
-from "./scr/jobs/scheduler.jobs.js";
 
 
 startScheduler();
@@ -117,7 +129,6 @@ startScheduler();
 // =========================
 
 
-// WhatsApp
 
 app.use(
 
@@ -129,9 +140,6 @@ whatsappRoutes
 
 
 
-
-// AI CORE
-
 app.use(
 
 "/ai_gateway",
@@ -141,11 +149,6 @@ aiGatewayRoutes
 );
 
 
-
-
-// Meta
-
-// Messenger + Instagram
 
 app.use(
 
@@ -157,9 +160,6 @@ metaRoutes
 
 
 
-
-// Email
-
 app.use(
 
 "/email",
@@ -170,9 +170,6 @@ emailRoutes
 
 
 
-
-// Vapi Voice
-
 app.use(
 
 "/vapi",
@@ -182,9 +179,6 @@ vapiRoutes
 );
 
 
-
-
-// CRM
 
 app.use(
 
@@ -197,7 +191,7 @@ crmRoutes
 
 
 
-// Employee Invitations
+// Invitations
 
 app.use(
 
@@ -206,6 +200,21 @@ app.use(
 invitationRoutes
 
 );
+
+
+
+
+// Dashboard
+
+app.use(
+
+"/dashboard",
+
+dashboardRoutes
+
+);
+
+
 
 
 
@@ -239,47 +248,42 @@ services:{
 
 
 whatsapp:
-
 "active",
 
 
 meta:
-
 "active",
 
 
 email:
-
 "active",
 
 
 vapi:
-
 "active",
 
 
 crm:
+"active",
 
+
+dashboard:
 "active",
 
 
 invitations:
-
 "active",
 
 
 export_worker:
-
 "active",
 
 
 scheduler_worker:
-
 "active",
 
 
 daily_reports:
-
 "active"
 
 
@@ -292,6 +296,7 @@ daily_reports:
 }
 
 );
+
 
 
 
@@ -376,11 +381,13 @@ console.log(
 );
 
 
+
 console.log(
 
 "✅ Scheduler started"
 
 );
+
 
 
 }
