@@ -7,38 +7,17 @@ import express from "express";
 
 
 // Export Worker
-
 import "./scr/workers/export.worker.js";
 
 
 // Scheduler Worker
-
 import "./scr/workers/scheduler.worker.js";
 
 
 
 
 // =========================
-// START SCHEDULER JOBS
-// =========================
-
-import { startScheduler }
-
-from "./scr/jobs/scheduler.jobs.js";
-
-
-
-// تشغيل الجدولة
-
-startScheduler();
-
-
-
-
-
-
-// =========================
-// ROUTES
+// ROUTES IMPORT
 // =========================
 
 
@@ -66,6 +45,10 @@ import crmRoutes
 from "./scr/routes/crm.js";
 
 
+import invitationRoutes 
+from "./scr/routes/invitations.js";
+
+
 
 
 
@@ -75,7 +58,6 @@ from "./scr/routes/crm.js";
 
 
 const app = express();
-
 
 
 
@@ -112,11 +94,27 @@ limit:"2mb"
 
 
 
+// =========================
+// START SCHEDULER
+// =========================
+
+
+import { startScheduler }
+
+from "./scr/jobs/scheduler.jobs.js";
+
+
+startScheduler();
+
+
+
+
+
+
 
 // =========================
 // CHANNEL ROUTES
 // =========================
-
 
 
 // WhatsApp
@@ -132,7 +130,6 @@ whatsappRoutes
 
 
 
-
 // AI CORE
 
 app.use(
@@ -142,7 +139,6 @@ app.use(
 aiGatewayRoutes
 
 );
-
 
 
 
@@ -162,7 +158,6 @@ metaRoutes
 
 
 
-
 // Email
 
 app.use(
@@ -172,7 +167,6 @@ app.use(
 emailRoutes
 
 );
-
 
 
 
@@ -190,7 +184,6 @@ vapiRoutes
 
 
 
-
 // CRM
 
 app.use(
@@ -202,6 +195,17 @@ crmRoutes
 );
 
 
+
+
+// Employee Invitations
+
+app.use(
+
+"/invitations",
+
+invitationRoutes
+
+);
 
 
 
@@ -224,9 +228,11 @@ app.get(
 
 res.json({
 
+
 status:
 
 "SALIH CRM RUNNING 🚀",
+
 
 
 services:{
@@ -257,12 +263,22 @@ crm:
 "active",
 
 
+invitations:
+
+"active",
+
+
 export_worker:
 
 "active",
 
 
 scheduler_worker:
+
+"active",
+
+
+daily_reports:
 
 "active"
 
@@ -326,6 +342,7 @@ error:
 
 
 
+
 // =========================
 // START SERVER
 // =========================
@@ -347,6 +364,21 @@ PORT,
 console.log(
 
 `🚀 SALIH CRM running on port ${PORT}`
+
+);
+
+
+
+console.log(
+
+"✅ Workers started"
+
+);
+
+
+console.log(
+
+"✅ Scheduler started"
 
 );
 
