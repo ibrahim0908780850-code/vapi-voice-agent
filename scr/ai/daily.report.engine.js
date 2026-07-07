@@ -117,7 +117,8 @@ export async function generateDailyReport(tenant_id) {
 
       (leads || [])
       .filter(
-        l => l.stage === "hot"
+        lead =>
+        lead.stage === "hot"
       );
 
 
@@ -126,7 +127,8 @@ export async function generateDailyReport(tenant_id) {
 
       (deals || [])
       .filter(
-        d => d.status === "open"
+        deal =>
+        deal.status === "open"
       );
 
 
@@ -135,9 +137,15 @@ export async function generateDailyReport(tenant_id) {
 
       openDeals
       .reduce(
-        (sum,d)=>
-        sum + Number(d.value || 0),
+
+        (sum, deal) =>
+
+        sum + Number(
+          deal.value || 0
+        ),
+
         0
+
       );
 
 
@@ -147,14 +155,16 @@ export async function generateDailyReport(tenant_id) {
     const reportData = {
 
 
-      date: today,
+      date:
+      today,
 
 
       leads:
-
       {
+
         total:
         leads?.length || 0,
+
 
         hot:
         hotLeads.length
@@ -164,10 +174,11 @@ export async function generateDailyReport(tenant_id) {
 
 
       communication:
-
       {
+
         calls:
         calls?.length || 0,
+
 
         messages:
         messages?.length || 0
@@ -177,13 +188,11 @@ export async function generateDailyReport(tenant_id) {
 
 
       appointments:
-
       appointments?.length || 0,
 
 
 
       sales:
-
       {
 
         deals:
@@ -222,23 +231,21 @@ null,
 )}
 
 
-اكتب ملخصاً احترافياً:
+اكتب تقريراً احترافياً يحتوي:
 
-- أداء اليوم
+- ملخص أداء اليوم
 - أهم الفرص
 - العملاء الذين يحتاجون متابعة
-- توصيات الغد
+- توصيات عملية للغد
 
-اجعل التقرير مختصر وعملي.
+اجعل التقرير مختصر وواضح.
 
 `;
 
 
 
 
-
-    let aiSummary =
-      "";
+    let aiSummary = "";
 
 
 
@@ -253,6 +260,7 @@ null,
 `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-1.5-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
 
 
+
       {
 
         contents:[
@@ -263,7 +271,8 @@ null,
 
               {
 
-                text:prompt
+                text:
+                prompt
 
               }
 
@@ -285,7 +294,9 @@ null,
       ?.content
       ?.parts?.[0]
       ?.text
+
       ||
+
       "";
 
     }
@@ -294,12 +305,103 @@ null,
 
 
 
+
+
     // =========================
-    // FINAL REPORT
+    // SAVE REPORT
+    // =========================
+
+
+    const {
+
+      data: savedReport,
+
+      error: saveError
+
+    } =
+
+    await supabase
+    .from("daily_reports")
+    .insert({
+
+      tenant_id,
+
+
+      report_date:
+      today,
+
+
+      leads_total:
+      reportData.leads.total,
+
+
+      hot_leads:
+      reportData.leads.hot,
+
+
+      calls_total:
+      reportData.communication.calls,
+
+
+      messages_total:
+      reportData.communication.messages,
+
+
+      appointments_total:
+      reportData.appointments,
+
+
+      deals_total:
+      reportData.sales.deals,
+
+
+      pipeline_value:
+      reportData.sales.pipeline,
+
+
+      ai_summary:
+      aiSummary,
+
+
+      report_data:
+      reportData
+
+
+    })
+    .select()
+    .single();
+
+
+
+
+    if(saveError){
+
+      console.error(
+        "❌ Daily Report Save Error:",
+        saveError.message
+      );
+
+    }
+
+
+
+
+
+
+
+    // =========================
+    // FINAL RESULT
     // =========================
 
 
     return {
+
+
+      success:true,
+
+
+      report_id:
+      savedReport?.id,
 
 
       tenant_id,
@@ -320,8 +422,8 @@ null,
       aiSummary
 
 
-
     };
+
 
 
 
@@ -334,7 +436,7 @@ null,
 
     console.error(
 
-      "Daily Report Engine Error:",
+      "❌ Daily Report Engine Error:",
       error.message
 
     );
@@ -343,11 +445,13 @@ null,
 
     return {
 
-      error:
-      true,
 
-      message:
+      success:false,
+
+
+      error:
       error.message
+
 
     };
 
