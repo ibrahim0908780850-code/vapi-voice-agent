@@ -60,8 +60,14 @@ import invitationRoutes
 from "./scr/routes/invitations.js";
 
 
+// Platform Owner Routes
+import platformRoutes
+from "./scr/routes/platform.js";
+
+
+
 import dashboardRoutes
-from "./scr/scr/routes/dashboard.js";
+from "./scr/routes/dashboard.js";
 
 
 
@@ -191,7 +197,10 @@ crmRoutes
 
 
 
-// Invitations
+// =========================
+// INVITATIONS
+// =========================
+
 
 app.use(
 
@@ -204,7 +213,26 @@ invitationRoutes
 
 
 
-// Dashboard
+// =========================
+// PLATFORM OWNER
+// =========================
+
+
+app.use(
+
+"/api/platform",
+
+platformRoutes
+
+);
+
+
+
+
+// =========================
+// DASHBOARD
+// =========================
+
 
 app.use(
 
@@ -272,6 +300,10 @@ dashboard:
 
 
 invitations:
+"active",
+
+
+platform:
 "active",
 
 
