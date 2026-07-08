@@ -7,57 +7,51 @@ process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 
 const supabaseKey =
+process.env.SUPABASE_SERVICE_ROLE_KEY ||
 process.env.SUPABASE_ANON_KEY ||
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 
 
 if(!supabaseUrl){
-
-throw new Error(
-"❌ Missing SUPABASE_URL environment variable"
-);
-
+  throw new Error(
+    "❌ Missing SUPABASE_URL"
+  );
 }
 
 
 if(!supabaseKey){
-
-throw new Error(
-"❌ Missing SUPABASE_ANON_KEY environment variable"
-);
-
+  throw new Error(
+    "❌ Missing Supabase Key"
+  );
 }
 
 
 
-const client =
-createClient(
-supabaseUrl,
-supabaseKey
+const client = createClient(
+  supabaseUrl,
+  supabaseKey,
+  {
+    auth:{
+      persistSession:false
+    }
+  }
 );
 
 
 
-/**
- * Multi Tenant Supabase Client
- * tenant_id يستخدم للفلترة فقط
- */
+export function getSupabase(tenant_id){
 
-export function getSupabase(tenant_id=null){
+  if(!tenant_id){
 
+    console.warn(
+      "⚠️ Supabase client created without tenant_id"
+    );
 
-if(!tenant_id){
-
-console.warn(
-"⚠️ Supabase called without tenant_id"
-);
-
-}
+  }
 
 
-return client;
-
+  return client;
 
 }
 
