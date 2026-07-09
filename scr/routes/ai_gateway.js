@@ -18,180 +18,130 @@ const router = express.Router();
 router.post("/", async (req, res) => {
 
 
-  const toolCallId =
-    req.body?.message?.toolCalls?.[0]?.id ||
-    crypto.randomUUID();
+const toolCallId =
+req.body?.message?.toolCalls?.[0]?.id ||
+crypto.randomUUID();
 
 
 
-  try {
-
-
-    // =========================
-    // TENANT RESOLUTION
-    // =========================
-
-    const tenant_id =
-      await resolveTenant(req);
-
-
-
-    const supabase =
-      getSupabase(tenant_id);
-
-
-
-
-
-    // =========================
-    // CHANNEL DETECTION
-    // =========================
-
-    const channel =
-
-      req.headers["x-channel"] ||
-
-      (
-
-        req.body?.message?.assistantId
-
-        ? "voice"
-
-
-        :
-
-        req.body?.entry?.[0]
-        ?.changes?.[0]
-        ?.value
-        ?.metadata
-
-        ? "whatsapp"
-
-
-        :
-
-        req.body?.entry?.[0]
-        ?.id
-        ?.includes("instagram")
-
-        ? "instagram"
-
-
-        :
-
-        req.body?.entry?.[0]?.id
-
-        ? "messenger"
-
-
-        :
-
-        "unknown"
-
-      );
-
-
-
-
-
-
-
-
-    // =========================
-    // USER DATA
-    // =========================
-
-const phone =
-  toolPhone ||
-  req.body?.message?.customer?.phone ||
-  "unknown";
+try {
 
 
 // =========================
-// VAPI TOOL ARGUMENTS
+// TENANT
 // =========================
 
-const toolArgs =
-  req.body?.message?.toolCalls?.[0]
-  ?.function
-  ?.arguments || {};
+const tenant_id =
+await resolveTenant(req);
+
+
+const supabase =
+getSupabase(tenant_id);
+
+
+
+
+// =========================
+// CHANNEL
+// =========================
+
+const channel =
+
+req.headers["x-channel"]
+
+||
+
+(
+req.body?.message?.assistantId
+
+?
+
+"voice"
+
+:
+
+"whatsapp"
+
+);
+
+
+
+
+
+// =========================
+// VAPI TOOL DATA
+// =========================
+
+let toolArgs = {};
+
+const rawArgs =
+
+req.body?.message
+?.toolCalls?.[0]
+?.function
+?.arguments;
+
+
+
+if(rawArgs){
+
+try{
+
+toolArgs =
+
+typeof rawArgs === "string"
+
+?
+
+JSON.parse(rawArgs)
+
+:
+
+rawArgs;
+
+
+}catch(e){
+
+console.log(
+"Tool arguments parse error"
+);
+
+}
+
+}
 
 
 
 const fullName =
-  toolArgs.fullName || null;
+toolArgs.fullName || null;
 
 
 const toolPhone =
-  toolArgs.phoneNumber || null;
+toolArgs.phoneNumber || null;
 
 
 const area =
-  toolArgs.area || null;
+toolArgs.area || null;
 
 
 const budget =
-  toolArgs.budget || null;
+toolArgs.budget || null;
 
 
 const intent =
-  toolArgs.intent || null;
+toolArgs.intent || null;
 
 
 const propertyType =
-  toolArgs.propertyType || null;
-
-      req.body?.entry?.[0]
-      ?.changes?.[0]
-      ?.value
-      ?.contacts?.[0]
-      ?.wa_id ||
-
-      "unknown";
+toolArgs.propertyType || null;
 
 
 
+const isToolCall =
 
-
-    const email =
-
-      req.body?.message?.customer?.email ||
-
-      null;
-
-
-
-
-
-    const user_id =
-
-      req.body?.entry?.[0]
-      ?.messaging?.[0]
-      ?.sender
-      ?.id ||
-
-      null;
-
-
-
-
-
-
-    const userMessage =
-
-
-      req.body?.message?.text ||
-
-
-      req.body?.entry?.[0]
-      ?.changes?.[0]
-      ?.value
-      ?.messages?.[0]
-      ?.text
-      ?.body ||
-
-
-      "";
+req.body?.message
+?.toolCalls
+?.length > 0;
 
 
 
@@ -199,308 +149,388 @@ const propertyType =
 
 
 
+// =========================
+// USER DATA
+// =========================
 
-    // =========================
-    // CREATE / UPDATE LEAD
-    // =========================
+
+const phone =
+
+toolPhone
+
+||
+
+req.body?.message
+?.customer
+?.phone
+
+||
+
+req.body?.entry?.[0]
+?.changes?.[0]
+?.value
+?.contacts?.[0]
+?.wa_id
+
+||
+
+"unknown";
 
 
-    const { data: lead, error: leadError } =
 
-      await supabase
 
-      .from("leads")
+const email =
 
-    .upsert(
+req.body?.message
+?.customer
+?.email
+
+||
+
+null;
+
+
+
+const userMessage =
+
+req.body?.message?.text
+
+||
+
+req.body?.entry?.[0]
+?.changes?.[0]
+?.value
+?.messages?.[0]
+?.text
+?.body
+
+||
+
+"";
+
+
+
+
+
+
+
+
+// =========================
+// CREATE / UPDATE LEAD
+// =========================
+
+
+const {
+
+data:lead,
+
+error:leadError
+
+}
+
+=
+
+await supabase
+
+.from("leads")
+
+.upsert(
+
 {
- tenant_id,
 
- full_name:
- fullName,
+tenant_id,
 
- phone,
 
- email,
+full_name:
+fullName,
 
- city:
- area,
 
- budget,
+phone,
 
- intent,
 
- property_type:
- propertyType,
+email,
 
- source:
- channel
+
+city:
+area,
+
+
+budget,
+
+
+intent,
+
+
+property_type:
+propertyType,
+
+
+source:
+channel
 
 },
+
 {
- onConflict:
- "phone,tenant_id"
+
+onConflict:
+"phone,tenant_id"
+
 }
+
 )
 
-      .select()
+.select()
 
-      .single();
+.single();
 
 
 
+if(leadError)
+throw leadError;
 
 
-    if (leadError)
-      throw leadError;
 
 
 
 
+// =========================
+// MEMORY
+// =========================
 
+const memory =
 
+await getLeadMemory(
 
+tenant_id,
 
+phone
 
-    // =========================
-    // MEMORY
-    // =========================
+);
 
 
-    const memory =
 
-      await getLeadMemory(
 
-        tenant_id,
 
-        phone
+// =========================
+// COMPANY DATA
+// =========================
 
-      );
+const {data:company}=
 
+await supabase
 
+.from("company_settings")
 
+.select("*")
 
+.eq(
+"tenant_id",
+tenant_id
+)
 
+.single();
 
 
 
-    // =========================
-    // COMPANY
-    // =========================
 
 
-    const { data: company } =
+// =========================
+// AI AGENT
+// =========================
 
-      await supabase
+const {data:agent}=
 
-      .from("company_settings")
+await supabase
 
-      .select("*")
+.from("ai_agents")
 
-      .eq(
-        "tenant_id",
-        tenant_id
-      )
+.select("*")
 
-      .single();
+.eq(
+"tenant_id",
+tenant_id
+)
 
+.eq(
+"status",
+"active"
+)
 
+.maybeSingle();
 
 
 
 
 
+// =========================
+// KNOWLEDGE BASE
+// =========================
 
+const {data:knowledge}=
 
-    // =========================
-    // AI AGENT
-    // =========================
+await supabase
 
+.from("ai_knowledge_base")
 
-    const { data: agent } =
+.select("*")
 
-      await supabase
+.eq(
+"tenant_id",
+tenant_id
+);
 
-      .from("ai_agents")
 
-      .select("*")
 
-      .eq(
-        "tenant_id",
-        tenant_id
-      )
 
-      .eq(
-        "status",
-        "active"
-      )
 
-      .single();
+// =========================
+// BUILD AI CONTEXT
+// =========================
 
+const tenantContext =
 
+buildAIContext({
 
+memory,
 
+company,
 
+agent,
 
+knowledge
 
+});
 
 
-    // =========================
-    // KNOWLEDGE BASE
-    // =========================
 
 
-    const { data: knowledge } =
 
-      await supabase
+// =========================
+// AI RESPONSE
+// =========================
 
-      .from("ai_knowledge_base")
+const aiResult =
 
-      .select("*")
+await generateAIResponse({
 
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+tenant_id,
 
+lead_id:
+lead.id,
 
+message:
+userMessage,
 
+phone,
 
+email,
 
+channel,
 
+tenantContext
 
+});
 
 
-    // =========================
-    // BUILD AI CONTEXT
-    // =========================
+const aiReply =
 
+aiResult?.response ||
 
-    const tenantContext =
+aiResult ||
 
-      buildAIContext({
+"";
+/*
+=========================
+LEAD ROUTING TO SALES TEAM
+=========================
+*/
 
-        memory,
 
-        company,
+if (
+  dealResult.score >= 70
+) {
 
-        agent,
 
-        knowledge
+  // تحديث حالة العميل
+  await supabase
 
-      });
+  .from("leads")
 
+  .update({
 
+    stage:
+    "hot",
 
+    lead_score:
+    dealResult.score
 
+  })
 
+  .eq(
 
+    "id",
 
+    lead.id
 
+  );
 
-    // =========================
-    // AI BRAIN
-    // =========================
 
 
-    const aiResult =
 
 
-      await generateAIResponse({
+  /*
+  =========================
+  FIND SALES AGENT
+  =========================
+  */
 
-        tenant_id,
 
-        lead_id:
-        lead.id,
-
-
-        message:
-        userMessage,
-
-
-        phone,
-
-
-        email,
-
-
-        user_id,
-
-
-        channel,
-
-
-        tenantContext
-
-
-      });
-
-
-
-
-
-
-
-
-    const aiReply =
-
-      aiResult.response ||
-
-      aiResult;
-
-
-
-
-
-
-
-
-
-    // =========================
-    // SAVE MESSAGE
-    // =========================
-
+  const { data: salesAgent } =
 
     await supabase
 
-    .from("messages")
+    .from("users")
 
-    .insert({
+    .select("id")
 
-      tenant_id,
+    .eq(
 
-      lead_id:
-      lead.id,
+      "tenant_id",
 
+      tenant_id
 
-      phone,
+    )
 
+    .eq(
 
-      message:
-      userMessage,
+      "role",
 
+      "agent"
 
-      ai_response:
-      aiReply,
+    )
 
+    .eq(
 
-      source:
-      channel
+      "is_active",
 
+      true
 
-    });
+    )
 
+    .limit(1)
 
-
-
-
-
-
+    .maybeSingle();
 
 
-    // =========================
-    // UPDATE LEAD
-    // =========================
 
+
+
+
+
+  if(salesAgent){
+
+
+    // ربط العميل بالموظف
 
     await supabase
 
@@ -508,15 +538,8 @@ const propertyType =
 
     .update({
 
-      last_activity:
-
-      new Date().toISOString(),
-
-
-      stage:
-
-      "warm"
-
+      assigned_to:
+      salesAgent.id
 
     })
 
@@ -532,13 +555,45 @@ const propertyType =
 
 
 
+    /*
+    =========================
+    CREATE NOTIFICATION
+    =========================
+    */
+
+
+    await supabase
+
+    .from("notifications")
+
+    .insert({
+
+      tenant_id,
+
+
+      title:
+      "🔥 Lead ساخن جديد",
+
+
+      body:
+      `عميل مهتم يحتاج متابعة: ${phone}`,
+
+
+      type:
+      "hot_lead"
+
+
+    });
 
 
 
 
-    // =========================
-    // CRM ACTIVITY
-    // =========================
+
+    /*
+    =========================
+    CRM ACTIVITY
+    =========================
+    */
 
 
     await supabase
@@ -549,362 +604,23 @@ const propertyType =
 
       tenant_id,
 
+
       lead_id:
       lead.id,
 
 
       action:
-
-      "ai_message",
+      "lead_assigned",
 
 
       note:
-
-      userMessage
-
+      `تم تحويل العميل لفريق المبيعات`
 
     });
-
-
-
-
-
-
-
-
-
-    // =========================
-    // HISTORY
-    // =========================
-
-
-    const { data: messages } =
-
-      await supabase
-
-      .from("messages")
-
-      .select("*")
-
-      .eq(
-        "lead_id",
-        lead.id
-      );
-
-
-
-
-
-    const { data: calls } =
-
-      await supabase
-
-      .from("calls")
-
-      .select("*")
-
-      .eq(
-        "lead_id",
-        lead.id
-      );
-
-
-
-
-
-    const { data: appointments } =
-
-      await supabase
-
-      .from("appointments")
-
-      .select("*")
-
-      .eq(
-        "lead_id",
-        lead.id
-      );
-
-
-
-
-
-    const { data: activities } =
-
-      await supabase
-
-      .from("crm_activities")
-
-      .select("*")
-
-      .eq(
-        "lead_id",
-        lead.id
-      );
-
-
-
-
-
-
-
-
-
-    // =========================
-    // DEAL INTELLIGENCE
-    // =========================
-
-
-    const dealResult =
-
-      await analyzeDeal({
-
-        lead,
-
-
-        messages:
-        messages || [],
-
-
-        calls:
-        calls || [],
-
-
-        appointments:
-        appointments || [],
-
-
-        activities:
-        activities || []
-
-      });
-
-
-
-
-
-
-
-
-
-    // =========================
-    // DEAL MANAGEMENT
-    // =========================
-
-
-    if(dealResult.score >= 70){
-
-
-      const { data: existingDeal } =
-
-        await supabase
-
-        .from("deals")
-
-        .select("*")
-
-        .eq(
-          "lead_id",
-          lead.id
-        )
-
-        .single();
-
-
-
-
-
-      if(!existingDeal){
-
-
-        await supabase
-
-        .from("deals")
-
-        .insert({
-
-          tenant_id,
-
-
-          lead_id:
-          lead.id,
-
-
-          title:
-          `Deal - ${phone}`,
-
-
-          stage:
-          "qualified",
-
-
-          probability:
-          dealResult.score,
-
-
-          value:
-          dealResult.expectedValue,
-
-
-          status:
-          "open"
-
-
-        });
-
-
-
-      }
-
-
-      else{
-
-
-        await supabase
-
-        .from("deals")
-
-        .update({
-
-          probability:
-          dealResult.score,
-
-
-          value:
-          dealResult.expectedValue,
-
-
-          stage:
-          dealResult.stage
-
-
-        })
-
-
-        .eq(
-
-          "id",
-
-          existingDeal.id
-
-        );
-
-
-      }
-
-
-    }
-
-
-
-
-
-
-
-
-
-    // =========================
-    // RESPONSE
-    // =========================
-
-
-    return res.json({
-
-      results:[
-
-        {
-
-          toolCallId,
-
-
-          result:
-
-          JSON.stringify({
-
-            success:true,
-
-
-            reply:
-            aiReply,
-
-
-            lead_id:
-            lead.id,
-
-
-            tenant_id,
-
-
-            channel,
-
-
-            deal_score:
-            dealResult.score,
-
-
-            deal_stage:
-            dealResult.stage
-
-
-          })
-
-        }
-
-      ]
-
-    });
-
-
-
 
 
 
   }
 
 
-  catch(err){
-
-
-    console.error(
-
-      "AI Gateway Error:",
-
-      err
-
-    );
-
-
-
-    return res.json({
-
-      results:[
-
-        {
-
-          toolCallId,
-
-
-          result:
-
-          JSON.stringify({
-
-            error:
-            "gateway_error"
-
-          })
-
-        }
-
-      ]
-
-    });
-
-
-  }
-
-
-});
-
-
-
-export default router;
+}
