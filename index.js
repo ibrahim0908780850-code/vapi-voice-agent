@@ -67,7 +67,7 @@ from "./scr/routes/platform.js";
 
 
 import dashboardRoutes
-from "../scr/routes/dashboard.js";
+from "./scr/scr/routes/dashboard.js";
 
 
 
