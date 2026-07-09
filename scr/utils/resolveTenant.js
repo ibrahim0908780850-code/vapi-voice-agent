@@ -1,17 +1,21 @@
 import { getSupabase } from "../config/supabase.js";
 
 
+
 /**
  * 🧠 SALIH Tenant Resolver
  *
- * يحول أي قناة إلى tenant_id
+ * Resolve any channel → tenant_id
  *
- * Supported:
- * Vapi
- * WhatsApp
- * Messenger
- * Instagram
- * Email
+ * Source:
+ * tenant_channels
+ *
+ * Supports:
+ * voice
+ * whatsapp
+ * messenger
+ * instagram
+ * email
  */
 
 
@@ -22,15 +26,18 @@ export async function resolveTenant(req){
 
 
 
-
-
   // =========================
   // VAPI VOICE
   // =========================
 
+
   const assistantId =
+
     req.body?.message?.assistantId ||
+
     req.headers["x-assistant-id"];
+
+
 
 
 
@@ -38,22 +45,32 @@ export async function resolveTenant(req){
 
 
     const tenant =
-      await findTenant(
+
+      await findChannelTenant(
+
         supabase,
-        "vapi",
+
+        "voice",
+
         "assistant_id",
+
         assistantId
+
       );
+
 
 
     if(tenant){
 
+
       console.log(
-        "✅ VAPI Tenant:",
+        "✅ Voice Tenant:",
         tenant
       );
 
+
       return tenant;
+
 
     }
 
@@ -68,7 +85,9 @@ export async function resolveTenant(req){
   // WHATSAPP
   // =========================
 
+
   const phoneNumberId =
+
     req.body
     ?.entry?.[0]
     ?.changes?.[0]
@@ -78,26 +97,38 @@ export async function resolveTenant(req){
 
 
 
+
+
   if(phoneNumberId){
 
 
     const tenant =
-      await findTenant(
+
+      await findChannelTenant(
+
         supabase,
+
         "whatsapp",
-        "phone_number_id",
+
+        "external_id",
+
         phoneNumberId
+
       );
 
 
+
     if(tenant){
+
 
       console.log(
         "✅ WhatsApp Tenant:",
         tenant
       );
 
+
       return tenant;
+
 
     }
 
@@ -109,87 +140,101 @@ export async function resolveTenant(req){
 
 
   // =========================
-  // META
-  // Messenger + Instagram
+  // MESSENGER
   // =========================
 
 
-  const object =
-    req.body?.object;
-
-
   const metaId =
+
     req.body
     ?.entry?.[0]
     ?.id;
 
 
 
+
   if(metaId){
 
 
+    const tenant =
 
-    // Messenger
+      await findChannelTenant(
 
-    if(object === "page"){
+        supabase,
 
+        "messenger",
 
-      const tenant =
-        await findTenant(
-          supabase,
-          "messenger",
-          "page_id",
-          metaId
-        );
+        "external_id",
 
+        metaId
 
-      if(tenant){
-
-        console.log(
-          "✅ Messenger Tenant:",
-          tenant
-        );
-
-        return tenant;
-
-      }
-
-
-    }
+      );
 
 
 
-
-    // Instagram
-
-    if(object === "instagram"){
+    if(tenant){
 
 
-      const tenant =
-        await findTenant(
-          supabase,
-          "instagram",
-          "instagram_id",
-          metaId
-        );
+      console.log(
+        "✅ Messenger Tenant:",
+        tenant
+      );
 
 
-      if(tenant){
-
-        console.log(
-          "✅ Instagram Tenant:",
-          tenant
-        );
-
-        return tenant;
-
-      }
+      return tenant;
 
 
     }
 
 
   }
+
+
+
+
+
+  // =========================
+  // INSTAGRAM
+  // =========================
+
+
+  if(metaId){
+
+
+    const tenant =
+
+      await findChannelTenant(
+
+        supabase,
+
+        "instagram",
+
+        "external_id",
+
+        metaId
+
+      );
+
+
+
+    if(tenant){
+
+
+      console.log(
+        "✅ Instagram Tenant:",
+        tenant
+      );
+
+
+      return tenant;
+
+
+    }
+
+
+  }
+
+
 
 
 
@@ -201,8 +246,12 @@ export async function resolveTenant(req){
 
 
   const email =
+
     req.body?.to ||
+
     req.body?.recipient;
+
+
 
 
 
@@ -210,22 +259,32 @@ export async function resolveTenant(req){
 
 
     const tenant =
-      await findTenant(
+
+      await findChannelTenant(
+
         supabase,
+
         "email",
-        "email",
+
+        "external_id",
+
         email
+
       );
 
 
+
     if(tenant){
+
 
       console.log(
         "✅ Email Tenant:",
         tenant
       );
 
+
       return tenant;
+
 
     }
 
@@ -237,16 +296,20 @@ export async function resolveTenant(req){
 
 
   // =========================
-  // DEVELOPMENT FALLBACK
+  // DEVELOPMENT ONLY
   // =========================
 
 
   const headerTenant =
+
     req.headers["x-tenant-id"];
 
 
 
+
+
   if(headerTenant){
+
 
     console.log(
       "⚠️ DEV Tenant:",
@@ -256,14 +319,16 @@ export async function resolveTenant(req){
 
     return headerTenant;
 
+
   }
 
 
 
 
 
+
   throw new Error(
-    "Tenant could not be resolved"
+    "❌ Tenant could not be resolved"
   );
 
 
@@ -275,38 +340,59 @@ export async function resolveTenant(req){
 
 
 
-
 /**
- * البحث عن الشركة حسب التكامل
+ * Find tenant from tenant_channels
  */
 
 
-async function findTenant(
+async function findChannelTenant(
+
   supabase,
-  provider,
+
+  channel,
+
   column,
+
   value
+
 ){
 
 
-  const { data, error } =
+
+  const {data,error}=
 
     await supabase
-      .from("tenant_integrations")
-      .select("tenant_id")
-      .eq(
-        "provider",
-        provider
-      )
-      .eq(
-        column,
-        value
-      )
-      .eq(
-        "status",
-        "active"
-      )
-      .maybeSingle();
+
+    .from("tenant_channels")
+
+    .select("tenant_id")
+
+    .eq(
+
+      "channel",
+
+      channel
+
+    )
+
+    .eq(
+
+      column,
+
+      value
+
+    )
+
+    .eq(
+
+      "status",
+
+      "active"
+
+    )
+
+    .maybeSingle();
+
 
 
 
@@ -316,12 +402,16 @@ async function findTenant(
 
 
     console.error(
-      "❌ Tenant Resolver Error:",
+
+      "Tenant Resolver Error:",
+
       error.message
+
     );
 
 
     return null;
+
 
   }
 
@@ -329,14 +419,8 @@ async function findTenant(
 
 
 
-  if(!data)
-    return null;
 
-
-
-
-
-  return data.tenant_id;
+  return data?.tenant_id || null;
 
 
 }
