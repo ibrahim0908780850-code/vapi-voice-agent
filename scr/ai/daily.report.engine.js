@@ -27,96 +27,82 @@ export async function generateDailyReport(tenant_id) {
 
 
     // =========================
-    // LEADS
+    // LOAD DATA
     // =========================
 
-    const { data: leads } =
 
-      await supabase
+    const [
+      leadsResult,
+      callsResult,
+      messagesResult,
+      appointmentsResult,
+      dealsResult
+    ] = await Promise.all([
+
+
+      supabase
       .from("leads")
       .select("*")
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+      .eq("tenant_id", tenant_id),
 
 
-
-    // =========================
-    // CALLS
-    // =========================
-
-    const { data: calls } =
-
-      await supabase
+      supabase
       .from("calls")
       .select("*")
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+      .eq("tenant_id", tenant_id),
 
 
-
-    // =========================
-    // MESSAGES
-    // =========================
-
-    const { data: messages } =
-
-      await supabase
+      supabase
       .from("messages")
       .select("*")
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+      .eq("tenant_id", tenant_id),
 
 
-
-    // =========================
-    // APPOINTMENTS
-    // =========================
-
-    const { data: appointments } =
-
-      await supabase
+      supabase
       .from("appointments")
       .select("*")
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+      .eq("tenant_id", tenant_id),
 
 
-
-    // =========================
-    // DEALS
-    // =========================
-
-    const { data: deals } =
-
-      await supabase
+      supabase
       .from("deals")
       .select("*")
-      .eq(
-        "tenant_id",
-        tenant_id
-      );
+      .eq("tenant_id", tenant_id)
+
+    ]);
+
+
+
+    const leads =
+      leadsResult.data || [];
+
+
+    const calls =
+      callsResult.data || [];
+
+
+    const messages =
+      messagesResult.data || [];
+
+
+    const appointments =
+      appointmentsResult.data || [];
+
+
+    const deals =
+      dealsResult.data || [];
 
 
 
 
 
     // =========================
-    // KPI CALCULATION
+    // KPI
     // =========================
 
 
     const hotLeads =
-
-      (leads || [])
-      .filter(
+      leads.filter(
         lead =>
         lead.stage === "hot"
       );
@@ -124,9 +110,7 @@ export async function generateDailyReport(tenant_id) {
 
 
     const openDeals =
-
-      (deals || [])
-      .filter(
+      deals.filter(
         deal =>
         deal.status === "open"
       );
@@ -134,13 +118,12 @@ export async function generateDailyReport(tenant_id) {
 
 
     const pipelineValue =
+      openDeals.reduce(
 
-      openDeals
-      .reduce(
+        (sum,deal)=>
 
-        (sum, deal) =>
-
-        sum + Number(
+        sum +
+        Number(
           deal.value || 0
         ),
 
@@ -151,56 +134,39 @@ export async function generateDailyReport(tenant_id) {
 
 
 
-
     const reportData = {
 
 
-      date:
-      today,
+      date: today,
 
 
-      leads:
-      {
+      leads:{
 
-        total:
-        leads?.length || 0,
+        total: leads.length,
 
-
-        hot:
-        hotLeads.length
+        hot: hotLeads.length
 
       },
 
 
+      communication:{
 
-      communication:
-      {
+        calls:calls.length,
 
-        calls:
-        calls?.length || 0,
-
-
-        messages:
-        messages?.length || 0
+        messages:messages.length
 
       },
-
 
 
       appointments:
-      appointments?.length || 0,
+      appointments.length,
 
 
+      sales:{
 
-      sales:
-      {
+        deals:deals.length,
 
-        deals:
-        deals?.length || 0,
-
-
-        pipeline:
-        pipelineValue
+        pipeline:pipelineValue
 
       }
 
@@ -230,18 +196,16 @@ null,
 2
 )}
 
+اكتب:
 
-اكتب تقريراً احترافياً يحتوي:
-
-- ملخص أداء اليوم
+- ملخص الأداء
 - أهم الفرص
 - العملاء الذين يحتاجون متابعة
-- توصيات عملية للغد
+- توصيات الغد
 
-اجعل التقرير مختصر وواضح.
+اجعل التقرير مختصر وعملي.
 
 `;
-
 
 
 
@@ -252,52 +216,90 @@ null,
     if(process.env.GEMINI_API_KEY){
 
 
-      const response =
-
-      await axios.post(
+      try {
 
 
-`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-1.5-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        const model =
+        process.env.GEMINI_MODEL ||
+        "gemini-1.5-flash-latest";
 
 
 
-      {
+        const response =
 
-        contents:[
+        await axios.post(
 
-          {
+`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
 
-            parts:[
+        {
 
-              {
+          contents:[
 
-                text:
-                prompt
+            {
 
-              }
+              parts:[
 
-            ]
+                {
+
+                  text:prompt
+
+                }
+
+              ]
+
+            }
+
+          ]
+
+        },
+
+        {
+
+          headers:{
+
+            "Content-Type":
+            "application/json"
 
           }
 
-        ]
+        }
 
-      });
+        );
 
 
 
-      aiSummary =
+        aiSummary =
 
-      response
-      ?.data
-      ?.candidates?.[0]
-      ?.content
-      ?.parts?.[0]
-      ?.text
+        response
+        ?.data
+        ?.candidates?.[0]
+        ?.content
+        ?.parts?.[0]
+        ?.text || "";
 
-      ||
 
-      "";
+
+      }
+
+
+      catch(aiError){
+
+
+        console.error(
+
+          "❌ Gemini Error:",
+          aiError.response?.data ||
+          aiError.message
+
+        );
+
+
+        aiSummary =
+        "AI summary unavailable";
+
+
+      }
+
 
     }
 
@@ -313,10 +315,8 @@ null,
 
 
     const {
-
-      data: savedReport,
-
-      error: saveError
+      data:savedReport,
+      error:saveError
 
     } =
 
@@ -327,8 +327,7 @@ null,
       tenant_id,
 
 
-      report_date:
-      today,
+      report_date:today,
 
 
       leads_total:
@@ -374,24 +373,20 @@ null,
 
 
 
+
     if(saveError){
 
       console.error(
+
         "❌ Daily Report Save Error:",
         saveError.message
+
       );
 
     }
 
 
 
-
-
-
-
-    // =========================
-    // FINAL RESULT
-    // =========================
 
 
     return {
@@ -412,10 +407,8 @@ null,
       .toISOString(),
 
 
-
       metrics:
       reportData,
-
 
 
       ai_summary:
@@ -426,9 +419,8 @@ null,
 
 
 
-
-
   }
+
 
 
   catch(error){
@@ -440,7 +432,6 @@ null,
       error.message
 
     );
-
 
 
     return {
