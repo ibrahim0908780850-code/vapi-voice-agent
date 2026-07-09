@@ -65,10 +65,13 @@ import platformRoutes
 from "./scr/routes/platform.js";
 
 
-
 import dashboardRoutes
-from "./scr/scr/routes/dashboard.js";
+from "./scr/routes/dashboard.js";
 
+
+// Website AI Knowledge Ingestion
+import websiteRoutes
+from "./website.ingest.js";
 
 
 
@@ -198,6 +201,22 @@ crmRoutes
 
 
 // =========================
+// AI WEBSITE INGESTION
+// =========================
+
+
+app.use(
+
+"/website",
+
+websiteRoutes
+
+);
+
+
+
+
+// =========================
 // INVITATIONS
 // =========================
 
@@ -292,6 +311,10 @@ vapi:
 
 
 crm:
+"active",
+
+
+website_ingestion:
 "active",
 
 
