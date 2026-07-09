@@ -101,10 +101,45 @@ router.post("/", async (req, res) => {
     // USER DATA
     // =========================
 
+const phone =
+  toolPhone ||
+  req.body?.message?.customer?.phone ||
+  "unknown";
 
-    const phone =
 
-      req.body?.message?.customer?.phone ||
+// =========================
+// VAPI TOOL ARGUMENTS
+// =========================
+
+const toolArgs =
+  req.body?.message?.toolCalls?.[0]
+  ?.function
+  ?.arguments || {};
+
+
+
+const fullName =
+  toolArgs.fullName || null;
+
+
+const toolPhone =
+  toolArgs.phoneNumber || null;
+
+
+const area =
+  toolArgs.area || null;
+
+
+const budget =
+  toolArgs.budget || null;
+
+
+const intent =
+  toolArgs.intent || null;
+
+
+const propertyType =
+  toolArgs.propertyType || null;
 
       req.body?.entry?.[0]
       ?.changes?.[0]
@@ -176,28 +211,36 @@ router.post("/", async (req, res) => {
 
       .from("leads")
 
-      .upsert(
+    .upsert(
+{
+ tenant_id,
 
-        {
+ full_name:
+ fullName,
 
-          tenant_id,
+ phone,
 
-          phone,
+ email,
 
-          email,
+ city:
+ area,
 
-          source: channel
+ budget,
 
-        },
+ intent,
 
-        {
+ property_type:
+ propertyType,
 
-          onConflict:
-          "phone,tenant_id"
+ source:
+ channel
 
-        }
-
-      )
+},
+{
+ onConflict:
+ "phone,tenant_id"
+}
+)
 
       .select()
 
