@@ -8,18 +8,47 @@ import { getSupabase } from "../config/supabase.js";
 const router = express.Router();
 
 
+
 const upload = multer({
 
-storage: multer.memoryStorage()
+    storage: multer.memoryStorage(),
+
+    limits: {
+
+        fileSize: 5 * 1024 * 1024
+
+    },
+
+    fileFilter(req,file,cb){
+
+
+        if(
+            file.mimetype.startsWith("image/")
+        ){
+
+            cb(null,true);
+
+        }
+
+        else{
+
+            cb(
+                new Error("Only images allowed"),
+                false
+            );
+
+        }
+
+    }
 
 });
 
 
 
 
-// =========================
+// =====================================
 // UPLOAD WEBSITE IMAGE
-// =========================
+// =====================================
 
 
 router.post(
@@ -35,6 +64,9 @@ try{
 const {
 
 tenant_id,
+
+website_id,
+
 section
 
 }=req.body;
@@ -43,26 +75,47 @@ section
 
 if(!req.file || !tenant_id){
 
+
 return res.status(400).json({
+
+success:false,
 
 error:"missing_data"
 
 });
+
 
 }
 
 
 
 const supabase =
+getSupabase();
 
-getSupabase(tenant_id);
+
+
+
+
+// Clean filename
+
+const safeName =
+
+req.file.originalname
+
+.replace(
+/[^a-zA-Z0-9.]/g,
+"-"
+);
+
+
 
 
 
 
 const fileName =
 
-`${tenant_id}/${Date.now()}-${req.file.originalname}`;
+`${tenant_id}/${website_id || "main"}/${Date.now()}-${safeName}`;
+
 
 
 
@@ -70,13 +123,12 @@ const fileName =
 
 // Upload Storage
 
+
 const {
 
 error:uploadError
 
-}=
-
-await supabase.storage
+}=await supabase.storage
 
 .from("website-media")
 
@@ -88,11 +140,16 @@ req.file.buffer,
 
 {
 
-contentType:req.file.mimetype
+contentType:req.file.mimetype,
+
+upsert:false
 
 }
 
 );
+
+
+
 
 
 
@@ -105,17 +162,24 @@ throw uploadError;
 
 
 
+
+// Public URL
+
+
 const {
 
 data:urlData
 
-}=
-
-supabase.storage
+}=supabase.storage
 
 .from("website-media")
 
-.getPublicUrl(fileName);
+.getPublicUrl(
+
+fileName
+
+);
+
 
 
 
@@ -131,9 +195,7 @@ data,
 
 error
 
-}=
-
-await supabase
+}=await supabase
 
 .from("website_media")
 
@@ -145,7 +207,7 @@ file_url:urlData.publicUrl,
 
 file_type:"image",
 
-section
+section:section || "general"
 
 })
 
@@ -158,9 +220,11 @@ section
 
 
 
+
 if(error)
 
 throw error;
+
 
 
 
@@ -176,9 +240,21 @@ media:data
 
 
 
+
+
 }
 
 catch(error){
+
+
+console.error(
+
+"Website Media Upload Error",
+
+error
+
+);
+
 
 
 res.status(500).json({
@@ -194,6 +270,8 @@ error:error.message
 
 
 });
+
+
 
 
 export default router;
