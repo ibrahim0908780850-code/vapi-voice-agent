@@ -1,170 +1,298 @@
 import express from "express";
-
 import { getSupabase } from "../config/supabase.js";
 
-
 const router = express.Router();
-
 
 
 // =====================================
 // CREATE WEBSITE
 // =====================================
 
-router.post("/create", async (req,res)=>{
+router.post("/create", async (req, res) => {
+
+    try {
+
+        const {
+            tenant_id,
+            template_id,
+            slug
+        } = req.body;
 
 
-try{
+        if (!tenant_id || !template_id) {
+
+            return res.status(400).json({
+                success: false,
+                error: "missing_data"
+            });
+
+        }
 
 
-const {
-
-tenant_id,
-
-template_id
-
-}=req.body;
+        const supabase = getSupabase();
 
 
 
-if(!tenant_id || !template_id){
+        // Check existing primary website
 
-return res.status(400).json({
+        const {
+            data: existing
+        } = await supabase
+            .from("websites")
+            .select("*")
+            .eq("tenant_id", tenant_id)
+            .maybeSingle();
 
-success:false,
 
-error:"missing_data"
+
+        if (existing) {
+
+            return res.json({
+
+                success: true,
+
+                message: "Website already exists",
+
+                website: existing
+
+            });
+
+        }
+
+
+
+        // Generate slug
+
+        const websiteSlug =
+            slug ||
+            `company-${Date.now()}`;
+
+
+
+        // Create website
+
+        const {
+
+            data: website,
+
+            error: websiteError
+
+        } = await supabase
+
+            .from("websites")
+
+            .insert({
+
+                tenant_id,
+
+                template_id,
+
+                slug: websiteSlug,
+
+                status: "draft"
+
+            })
+
+            .select()
+
+            .single();
+
+
+
+        if (websiteError)
+
+            throw websiteError;
+
+
+
+
+        // Create default content
+
+
+        const {
+
+            error: contentError
+
+        } = await supabase
+
+            .from("website_content")
+
+            .insert({
+
+                tenant_id,
+
+                hero_title:
+                "Welcome To Your Website",
+
+                hero_description:
+                "Your AI powered business website",
+
+                services: {},
+
+                faq: {},
+
+                contact_info: {}
+
+            });
+
+
+
+        if(contentError)
+
+            throw contentError;
+
+
+
+
+
+        // Create design settings
+
+
+        const {
+
+            error: designError
+
+        } = await supabase
+
+            .from("website_design_settings")
+
+            .insert({
+
+                tenant_id,
+
+                primary_color:"#2563eb",
+
+                secondary_color:"#1e293b",
+
+                font:"Cairo"
+
+            });
+
+
+
+        if(designError)
+
+            throw designError;
+
+
+
+
+
+
+        // Create default pages
+
+
+        const pages = [
+
+            {
+
+                tenant_id,
+
+                page_name:"Home",
+
+                slug:"/",
+
+                content:{}
+
+            },
+
+            {
+
+                tenant_id,
+
+                page_name:"About",
+
+                slug:"about",
+
+                content:{}
+
+            },
+
+            {
+
+                tenant_id,
+
+                page_name:"Services",
+
+                slug:"services",
+
+                content:{}
+
+            },
+
+            {
+
+                tenant_id,
+
+                page_name:"Contact",
+
+                slug:"contact",
+
+                content:{}
+
+            }
+
+        ];
+
+
+
+        const {
+
+            error:pagesError
+
+        } = await supabase
+
+            .from("website_pages")
+
+            .insert(pages);
+
+
+
+        if(pagesError)
+
+            throw pagesError;
+
+
+
+
+
+        return res.json({
+
+            success:true,
+
+            website
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        console.error(
+            "Create Website Error",
+            error
+        );
+
+
+        return res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
-}
 
 
-
-const supabase =
-
-getSupabase(tenant_id);
-
-
-
-
-// check existing website
-
-const {data:existing}=
-
-await supabase
-
-.from("websites")
-
-.select("*")
-
-.eq(
-"tenant_id",
-tenant_id
-)
-
-.maybeSingle();
-
-
-
-if(existing){
-
-return res.json({
-
-success:true,
-
-message:"Website already exists",
-
-website:existing
-
-});
-
-}
-
-
-
-
-
-// create website
-
-
-const {
-
-data,
-
-error
-
-}=
-
-
-await supabase
-
-.from("websites")
-
-.insert({
-
-tenant_id,
-
-template_id,
-
-status:"draft"
-
-})
-
-.select()
-
-.single();
-
-
-
-
-
-if(error)
-
-throw error;
-
-
-
-
-
-return res.json({
-
-success:true,
-
-website:data
-
-});
-
-
-
-
-}
-
-catch(error){
-
-
-console.error(
-
-"Create Website Error",
-
-error
-
-);
-
-
-return res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
-
-
-});
 
 
 
@@ -179,87 +307,86 @@ error:error.message
 router.get("/:tenant_id", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const {
-
-tenant_id
-
-}=req.params;
-
-
-
-const supabase =
-
-getSupabase(tenant_id);
+        const {
+            tenant_id
+        } = req.params;
 
 
 
-
-const {data,error}=
-
-await supabase
-
-.from("websites")
-
-.select(`
-
-*,
-
-website_templates(*)
-
-`)
-
-.eq(
-
-"tenant_id",
-
-tenant_id
-
-)
-
-.single();
+        const supabase =
+        getSupabase();
 
 
 
+        const {
+
+            data,
+
+            error
+
+        } = await supabase
+
+        .from("websites")
+
+        .select(`
+
+            *,
+
+            website_templates(*)
+
+        `)
+
+        .eq(
+
+            "tenant_id",
+
+            tenant_id
+
+        )
+
+        .single();
 
 
-if(error)
 
-throw error;
+        if(error)
+
+            throw error;
 
 
 
-res.json({
 
-success:true,
+        res.json({
 
-website:data
+            success:true,
+
+            website:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
-
-
-}
-
-catch(error){
-
-
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
-
-
-
-});
 
 
 
@@ -276,96 +403,108 @@ error:error.message
 router.put("/:id/template", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const {
-
-template_id
-
-}=req.body;
-
-
-
-const {
-
-id
-
-}=req.params;
+        const {
+            template_id
+        } = req.body;
 
 
 
-const supabase =
-
-getSupabase();
-
-
+        const {
+            id
+        } = req.params;
 
 
 
-const {data,error}=
+        if(!template_id){
 
-await supabase
+            return res.status(400).json({
 
-.from("websites")
+                success:false,
 
-.update({
+                error:"template_required"
 
-template_id
+            });
 
-})
+        }
 
-.eq(
 
-"id",
 
-id
-
-)
-
-.select()
-
-.single();
+        const supabase =
+        getSupabase();
 
 
 
 
+        const {
 
-if(error)
+            data,
 
-throw error;
+            error
+
+        } = await supabase
+
+        .from("websites")
+
+        .update({
+
+            template_id
+
+        })
+
+        .eq(
+
+            "id",
+
+            id
+
+        )
+
+        .select()
+
+        .single();
 
 
 
-res.json({
 
-success:true,
+        if(error)
 
-website:data
+            throw error;
+
+
+
+
+        res.json({
+
+            success:true,
+
+            website:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
-
-
-}
-
-catch(error){
-
-
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
-
-
-
-});
 
 
 
@@ -382,85 +521,88 @@ error:error.message
 router.put("/:id/publish", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const {
-
-id
-
-}=req.params;
+        const {
+            id
+        } = req.params;
 
 
 
-const supabase =
-
-getSupabase();
+        const supabase =
+        getSupabase();
 
 
 
 
-const {data,error}=
+        const {
 
-await supabase
+            data,
 
-.from("websites")
+            error
 
-.update({
+        } = await supabase
 
-status:"published"
+        .from("websites")
 
-})
+        .update({
 
-.eq(
+            status:"published"
 
-"id",
+        })
 
-id
+        .eq(
 
-)
+            "id",
 
-.select()
+            id
 
-.single();
+        )
 
+        .select()
 
-
-
-
-if(error)
-
-throw error;
+        .single();
 
 
 
-res.json({
 
-success:true,
+        if(error)
 
-website:data
+            throw error;
+
+
+
+
+        res.json({
+
+            success:true,
+
+            website:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
-
-}
-
-catch(error){
-
-
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
-
-
-});
 
 
 
