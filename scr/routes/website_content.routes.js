@@ -11,7 +11,7 @@ const router = express.Router();
 // CREATE / UPDATE WEBSITE CONTENT
 // =====================================
 
-router.post("/save", async (req,res)=>{
+router.post("/save", async(req,res)=>{
 
 
 try{
@@ -20,6 +20,8 @@ try{
 const {
 
 tenant_id,
+
+website_id,
 
 hero_title,
 
@@ -39,7 +41,9 @@ seo
 
 
 
+
 if(!tenant_id){
+
 
 return res.status(400).json({
 
@@ -49,113 +53,54 @@ error:"tenant_required"
 
 });
 
-}
-
-
-
-const supabase =
-
-getSupabase(tenant_id);
-
-
-
-
-
-const {data:existing}=
-
-await supabase
-
-.from("website_content")
-
-.select("id")
-
-.eq(
-"tenant_id",
-tenant_id
-)
-
-.maybeSingle();
-
-
-
-
-
-let result;
-
-
-
-if(existing){
-
-
-// UPDATE
-
-result = await supabase
-
-.from("website_content")
-
-.update({
-
-hero_title,
-
-hero_description,
-
-about_text,
-
-services,
-
-faq,
-
-contact_info,
-
-seo,
-
-updated_at:
-new Date()
-
-})
-
-.eq(
-
-"id",
-
-existing.id
-
-)
-
-.select()
-
-.single();
-
-
 
 }
 
-else{
 
 
-// CREATE
+const supabase = getSupabase();
 
-result = await supabase
+
+
+
+
+const {
+
+data,
+
+error
+
+}= await supabase
 
 .from("website_content")
 
-.insert({
+.upsert({
 
 tenant_id,
 
+website_id,
+
 hero_title,
 
 hero_description,
 
 about_text,
 
-services,
+services: services || {},
 
-faq,
+faq: faq || {},
 
-contact_info,
+contact_info: contact_info || {},
 
-seo
+seo: seo || {},
+
+updated_at:new Date()
+
+},
+
+{
+
+onConflict:"tenant_id"
 
 })
 
@@ -165,14 +110,15 @@ seo
 
 
 
-}
 
 
 
+if(error)
 
-if(result.error)
+throw error;
 
-throw result.error;
+
+
 
 
 
@@ -180,7 +126,7 @@ res.json({
 
 success:true,
 
-content:result.data
+content:data
 
 });
 
@@ -221,6 +167,8 @@ error:error.message
 
 
 
+
+
 // =====================================
 // GET WEBSITE CONTENT
 // =====================================
@@ -240,17 +188,19 @@ tenant_id
 
 
 
-const supabase =
-
-getSupabase(tenant_id);
+const supabase=getSupabase();
 
 
 
 
 
-const {data,error}=
+const {
 
-await supabase
+data,
+
+error
+
+}=await supabase
 
 .from("website_content")
 
@@ -273,6 +223,7 @@ tenant_id
 if(error)
 
 throw error;
+
 
 
 
@@ -305,6 +256,8 @@ error:error.message
 
 
 });
+
+
 
 
 
