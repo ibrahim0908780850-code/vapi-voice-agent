@@ -60,7 +60,9 @@ import invitationRoutes
 from "./scr/routes/invitations.js";
 
 
-// Platform Owner Routes
+
+// Platform Owner
+
 import platformRoutes
 from "./scr/routes/platform.js";
 
@@ -69,9 +71,69 @@ import dashboardRoutes
 from "./scr/routes/dashboard.js";
 
 
+
+
+
+// =========================
+// WEBSITE SYSTEM IMPORTS
+// =========================
+
+
 // Website AI Knowledge Ingestion
+
 import websiteRoutes
 from "./website.ingest.js";
+
+
+
+// Website Builder
+
+import websiteBuilderRoutes
+
+from "./scr/routes/website.routes.js";
+
+
+
+// Website Content
+
+import websiteContentRoutes
+
+from "./scr/routes/website_content.routes.js";
+
+
+
+// Website Design
+
+import websiteDesignRoutes
+
+from "./scr/routes/website_design.routes.js";
+
+
+
+// Public Website Renderer
+
+import publicWebsiteRoutes
+
+from "./scr/routes/public_website.routes.js";
+
+
+
+// Website Leads
+
+import websiteLeadRoutes
+
+from "./scr/routes/website_leads.routes.js";
+
+
+
+// AI Website Generator
+
+import websiteAIRoutes
+
+from "./scr/routes/website_ai.routes.js";
+
+
+
 
 
 
@@ -82,6 +144,7 @@ from "./website.ingest.js";
 
 
 const app = express();
+
 
 
 
@@ -108,7 +171,7 @@ app.use(
 
 express.json({
 
-limit:"2mb"
+limit:"10mb"
 
 })
 
@@ -133,10 +196,10 @@ startScheduler();
 
 
 
+
 // =========================
 // CHANNEL ROUTES
 // =========================
-
 
 
 app.use(
@@ -200,10 +263,16 @@ crmRoutes
 
 
 
+
+
+
 // =========================
-// AI WEBSITE INGESTION
+// WEBSITE SYSTEM
 // =========================
 
+
+
+// Website ingestion
 
 app.use(
 
@@ -212,6 +281,82 @@ app.use(
 websiteRoutes
 
 );
+
+
+
+// Website Builder
+
+app.use(
+
+"/website/builder",
+
+websiteBuilderRoutes
+
+);
+
+
+
+// Website Content Editor
+
+app.use(
+
+"/website/content",
+
+websiteContentRoutes
+
+);
+
+
+
+// Website Design Settings
+
+app.use(
+
+"/website/design",
+
+websiteDesignRoutes
+
+);
+
+
+
+// Public Websites
+
+app.use(
+
+"/public/website",
+
+publicWebsiteRoutes
+
+);
+
+
+
+// Website Leads
+
+app.use(
+
+"/website",
+
+websiteLeadRoutes
+
+);
+
+
+
+// AI Website Generator
+
+app.use(
+
+"/website/ai",
+
+websiteAIRoutes
+
+);
+
+
+
+
 
 
 
@@ -232,6 +377,8 @@ invitationRoutes
 
 
 
+
+
 // =========================
 // PLATFORM OWNER
 // =========================
@@ -248,6 +395,8 @@ platformRoutes
 
 
 
+
+
 // =========================
 // DASHBOARD
 // =========================
@@ -260,7 +409,6 @@ app.use(
 dashboardRoutes
 
 );
-
 
 
 
@@ -287,11 +435,12 @@ res.json({
 
 status:
 
-"SALIH CRM RUNNING 🚀",
+"SALIH AI PLATFORM RUNNING 🚀",
 
 
 
 services:{
+
 
 
 whatsapp:
@@ -315,6 +464,30 @@ crm:
 
 
 website_ingestion:
+"active",
+
+
+website_builder:
+"active",
+
+
+website_content:
+"active",
+
+
+website_design:
+"active",
+
+
+public_websites:
+"active",
+
+
+website_leads:
+"active",
+
+
+website_ai_generator:
 "active",
 
 
@@ -402,7 +575,6 @@ error:
 
 
 
-
 // =========================
 // START SERVER
 // =========================
@@ -423,7 +595,7 @@ PORT,
 
 console.log(
 
-`🚀 SALIH CRM running on port ${PORT}`
+`🚀 SALIH AI PLATFORM running on port ${PORT}`
 
 );
 
@@ -440,6 +612,14 @@ console.log(
 console.log(
 
 "✅ Scheduler started"
+
+);
+
+
+
+console.log(
+
+"✅ Website Builder enabled"
 
 );
 
