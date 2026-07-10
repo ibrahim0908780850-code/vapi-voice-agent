@@ -18,16 +18,17 @@ const router = express.Router();
 router.post("/:order_id/build", async(req,res)=>{
 
 
+    const {
+        order_id
+    } = req.params;
+
+
+
     try{
 
 
-        const {
-            order_id
-        } = req.params;
-
-
-
         if(!order_id){
+
 
             return res.status(400).json({
 
@@ -37,17 +38,22 @@ router.post("/:order_id/build", async(req,res)=>{
 
             });
 
+
         }
 
 
 
-        const supabase =
-        getSupabase();
+
+        const supabase = getSupabase();
 
 
 
 
-        // Get order
+
+        // =========================
+        // GET ORDER
+        // =========================
+
 
         const {
 
@@ -62,8 +68,11 @@ router.post("/:order_id/build", async(req,res)=>{
         .select("*")
 
         .eq(
+
             "id",
+
             order_id
+
         )
 
         .single();
@@ -80,7 +89,12 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
-        // Prevent duplicate generation
+
+
+        // =========================
+        // CHECK STATUS
+        // =========================
+
 
         if(order.status === "completed"){
 
@@ -102,7 +116,32 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
-        // Update status
+
+        if(order.status === "building"){
+
+
+            return res.json({
+
+                success:false,
+
+                message:"Website generation already running"
+
+            });
+
+
+        }
+
+
+
+
+
+
+
+
+        // =========================
+        // UPDATE BUILDING
+        // =========================
+
 
         await supabase
 
@@ -128,12 +167,14 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
-        // Generate website
 
 
-        const website =
+        // =========================
+        // GENERATE WEBSITE
+        // =========================
 
-        await generateWebsite(
+
+        const website = await generateWebsite(
 
             order_id
 
@@ -145,7 +186,11 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
-        // Update completed
+
+
+        // =========================
+        // COMPLETE
+        // =========================
 
 
         await supabase
@@ -174,6 +219,7 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
+
         res.json({
 
             success:true,
@@ -190,6 +236,8 @@ router.post("/:order_id/build", async(req,res)=>{
 
 
 
+
+
     }
 
     catch(error){
@@ -198,11 +246,46 @@ router.post("/:order_id/build", async(req,res)=>{
 
         console.error(
 
-            "Website Generator Error",
+            "Website Build Error",
 
             error
 
         );
+
+
+
+
+        // mark failed
+
+        if(order_id){
+
+
+            const supabase=getSupabase();
+
+
+
+            await supabase
+
+            .from("website_orders")
+
+            .update({
+
+                status:"failed"
+
+            })
+
+            .eq(
+
+                "id",
+
+                order_id
+
+            );
+
+
+        }
+
+
 
 
 
