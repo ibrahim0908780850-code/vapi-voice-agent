@@ -9,28 +9,61 @@ const router = express.Router();
 
 
 
-router.post("/ingest", async (req,res)=>{
+router.post("/ingest", async (req, res) => {
 
 
-try{
+try {
 
 
 const {
 url,
 tenant_id
-}=req.body;
+} = req.body;
 
+
+
+// =========================
+// VALIDATION
+// =========================
 
 
 if(!url || !tenant_id){
 
 return res.status(400).json({
 
+success:false,
+
 error:"missing_data"
 
 });
 
 }
+
+
+
+
+// validate url
+
+let websiteUrl;
+
+try{
+
+websiteUrl = new URL(url);
+
+}
+
+catch{
+
+return res.status(400).json({
+
+success:false,
+
+error:"invalid_url"
+
+});
+
+}
+
 
 
 
@@ -43,37 +76,119 @@ getSupabase(tenant_id);
 
 
 // =========================
+// CHECK EXISTING KNOWLEDGE
+// =========================
+
+
+const {data:existing} =
+
+await supabase
+
+.from("ai_knowledge_base")
+
+.select("id")
+
+.eq(
+"tenant_id",
+tenant_id
+)
+
+.contains(
+"metadata",
+{
+url:url
+}
+)
+
+.maybeSingle();
+
+
+
+
+
+if(existing){
+
+
+return res.json({
+
+success:true,
+
+message:
+"Website already exists in knowledge base",
+
+id:
+existing.id
+
+});
+
+
+}
+
+
+
+
+
+
+
+// =========================
 // FETCH WEBSITE
 // =========================
 
 
 const response =
 
-await axios.get(url,{
+await axios.get(
+
+websiteUrl.href,
+
+{
 
 timeout:15000,
+
+maxContentLength:5000000,
+
 
 headers:{
 
 "User-Agent":
-"SALIH-AI-Bot"
+"SALIH-AI-Bot/1.0"
 
 }
 
-});
+}
+
+);
+
 
 
 
 
 const html =
+
 response.data;
 
 
 
+
+
+// =========================
+// EXTRACT TEXT
+// =========================
+
+
 const $ =
+
 cheerio.load(html);
 
 
+
+// remove unnecessary parts
+
+$("script").remove();
+
+$("style").remove();
+
+$("noscript").remove();
 
 
 
@@ -85,11 +200,7 @@ $("body")
 
 .replace(/\s+/g," ")
 
-.trim()
-
-.slice(0,10000);
-
-
+.trim();
 
 
 
@@ -100,6 +211,8 @@ if(!text){
 
 return res.status(400).json({
 
+success:false,
+
 error:
 "no_content_found"
 
@@ -107,6 +220,18 @@ error:
 
 
 }
+
+
+
+
+
+// limit size
+
+const cleanText =
+
+text.slice(0,15000);
+
+
 
 
 
@@ -137,15 +262,45 @@ tenant_id,
 
 
 title:
-`Website: ${url}`,
+
+`Website Knowledge - ${websiteUrl.hostname}`,
 
 
 content:
-text,
+
+cleanText,
 
 
 category:
-"company"
+
+"company",
+
+
+metadata:{
+
+source:
+"website",
+
+
+type:
+"website_ingestion",
+
+
+url:
+
+websiteUrl.href,
+
+
+domain:
+
+websiteUrl.hostname,
+
+
+created_by:
+
+"SALIH AI"
+
+}
 
 
 })
@@ -170,17 +325,24 @@ throw error;
 
 
 
-return res.json({
 
+// =========================
+// RESPONSE
+// =========================
+
+
+return res.json({
 
 success:true,
 
 
 message:
-"Website added to AI knowledge base",
+"Website successfully added to AI knowledge base",
 
 
-data
+knowledge_id:
+
+data.id
 
 
 });
@@ -190,12 +352,14 @@ data
 
 }
 
+
+
 catch(error){
 
 
 console.error(
 
-"Website ingestion error:",
+"SALIH Website Ingestion Error:",
 
 error.message
 
@@ -207,13 +371,15 @@ return res.status(500).json({
 
 success:false,
 
-error:error.message
+
+error:
+
+"website_ingestion_failed"
 
 });
 
 
 }
-
 
 
 });
