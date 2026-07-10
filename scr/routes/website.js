@@ -2,32 +2,35 @@ import express from "express";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-import { getSupabase } from "../config/supabase.js";
+import { getSupabase } from "./scr/config/supabase.js";
 
 
 const router = express.Router();
 
 
 
-router.post("/ingest", async (req, res) => {
+// =====================================
+// INGEST WEBSITE INTO AI KNOWLEDGE
+// =====================================
+
+router.post("/ingest", async(req,res)=>{
 
 
-try {
+try{
 
 
 const {
+
 url,
+
 tenant_id
-} = req.body;
 
+}=req.body;
 
-
-// =========================
-// VALIDATION
-// =========================
 
 
 if(!url || !tenant_id){
+
 
 return res.status(400).json({
 
@@ -37,22 +40,25 @@ error:"missing_data"
 
 });
 
+
 }
 
 
 
 
-// validate url
-
 let websiteUrl;
+
 
 try{
 
+
 websiteUrl = new URL(url);
+
 
 }
 
 catch{
+
 
 return res.status(400).json({
 
@@ -62,67 +68,13 @@ error:"invalid_url"
 
 });
 
-}
-
-
-
-
-const supabase =
-
-getSupabase(tenant_id);
-
-
-
-
-
-// =========================
-// CHECK EXISTING KNOWLEDGE
-// =========================
-
-
-const {data:existing} =
-
-await supabase
-
-.from("ai_knowledge_base")
-
-.select("id")
-
-.eq(
-"tenant_id",
-tenant_id
-)
-
-.contains(
-"metadata",
-{
-url:url
-}
-)
-
-.maybeSingle();
-
-
-
-
-
-if(existing){
-
-
-return res.json({
-
-success:true,
-
-message:
-"Website already exists in knowledge base",
-
-id:
-existing.id
-
-});
-
 
 }
+
+
+
+
+const supabase = getSupabase();
 
 
 
@@ -135,9 +87,7 @@ existing.id
 // =========================
 
 
-const response =
-
-await axios.get(
+const response = await axios.get(
 
 websiteUrl.href,
 
@@ -147,11 +97,10 @@ timeout:15000,
 
 maxContentLength:5000000,
 
-
 headers:{
 
 "User-Agent":
-"SALIH-AI-Bot/1.0"
+"SALIH-AI-Crawler/1.0"
 
 }
 
@@ -163,26 +112,21 @@ headers:{
 
 
 
-const html =
+const html=response.data;
 
-response.data;
 
 
 
 
 
 // =========================
-// EXTRACT TEXT
+// EXTRACT CONTENT
 // =========================
 
 
-const $ =
-
-cheerio.load(html);
+const $ = cheerio.load(html);
 
 
-
-// remove unnecessary parts
 
 $("script").remove();
 
@@ -190,11 +134,15 @@ $("style").remove();
 
 $("noscript").remove();
 
+$("nav").remove();
+
+$("footer").remove();
 
 
-const text =
 
-$("body")
+
+
+const text = $("body")
 
 .text()
 
@@ -213,8 +161,7 @@ return res.status(400).json({
 
 success:false,
 
-error:
-"no_content_found"
+error:"empty_content"
 
 });
 
@@ -225,12 +172,39 @@ error:
 
 
 
-// limit size
 
-const cleanText =
+// =========================
+// SPLIT CONTENT
+// =========================
 
-text.slice(0,15000);
 
+const chunks=[];
+
+
+const size=3000;
+
+
+for(
+let i=0;
+i<text.length;
+i+=size
+){
+
+
+chunks.push(
+
+text.substring(
+
+i,
+
+i+size
+
+)
+
+);
+
+
+}
 
 
 
@@ -243,83 +217,81 @@ text.slice(0,15000);
 // =========================
 
 
-const {
+const records = chunks.map(
 
-data,
+(chunk,index)=>(
 
-error
-
-}=
-
-
-await supabase
-
-.from("ai_knowledge_base")
-
-.insert({
+{
 
 tenant_id,
 
 
 title:
 
-`Website Knowledge - ${websiteUrl.hostname}`,
-
-
-content:
-
-cleanText,
+`Website Knowledge ${index+1}`,
 
 
 category:
 
-"company",
+"website",
+
+
+content:
+
+chunk,
 
 
 metadata:{
 
-source:
-"website",
+source:"website",
 
 
-type:
-"website_ingestion",
+url:websiteUrl.href,
 
 
-url:
-
-websiteUrl.href,
+domain:websiteUrl.hostname,
 
 
-domain:
+chunk:index+1
 
-websiteUrl.hostname,
-
-
-created_by:
-
-"SALIH AI"
 
 }
 
+}
 
-})
+)
 
-.select()
-
-.single();
-
+);
 
 
 
 
 
-if(error){
+
+
+const {
+
+data,
+
+error
+
+}= await supabase
+
+.from("ai_knowledge_base")
+
+.insert(records)
+
+.select();
+
+
+
+
+
+
+if(error)
 
 throw error;
 
-}
-
 
 
 
@@ -327,22 +299,45 @@ throw error;
 
 
 // =========================
-// RESPONSE
+// UPDATE COMPANY SETTINGS
 // =========================
 
 
-return res.json({
+await supabase
+
+.from("company_settings")
+
+.update({
+
+website:url
+
+})
+
+.eq(
+
+"tenant_id",
+
+tenant_id
+
+);
+
+
+
+
+
+
+
+res.json({
 
 success:true,
 
 
 message:
-"Website successfully added to AI knowledge base",
+
+"Website indexed successfully",
 
 
-knowledge_id:
-
-data.id
+chunks:data.length
 
 
 });
@@ -350,31 +345,27 @@ data.id
 
 
 
+
 }
-
-
 
 catch(error){
 
 
 console.error(
 
-"SALIH Website Ingestion Error:",
+"Website ingestion error",
 
-error.message
+error
 
 );
 
 
 
-return res.status(500).json({
+res.status(500).json({
 
 success:false,
 
-
-error:
-
-"website_ingestion_failed"
+error:error.message
 
 });
 
@@ -382,7 +373,10 @@ error:
 }
 
 
+
 });
+
+
 
 
 
