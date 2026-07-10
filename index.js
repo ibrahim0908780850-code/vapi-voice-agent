@@ -61,7 +61,11 @@ from "./scr/routes/invitations.js";
 
 
 
-// Platform Owner
+
+// =========================
+// PLATFORM OWNER
+// =========================
+
 
 import platformRoutes
 from "./scr/routes/platform.js";
@@ -74,12 +78,13 @@ from "./scr/routes/dashboard.js";
 
 
 
+
 // =========================
-// WEBSITE SYSTEM IMPORTS
+// WEBSITE SYSTEM
 // =========================
 
 
-// Website AI Knowledge Ingestion
+// Website AI Knowledge
 
 import websiteRoutes
 from "./website.ingest.js";
@@ -110,7 +115,7 @@ from "./scr/routes/website_design.routes.js";
 
 
 
-// Public Website Renderer
+// Public Website
 
 import publicWebsiteRoutes
 
@@ -135,6 +140,40 @@ from "./scr/routes/website_ai.routes.js";
 
 
 
+// =========================
+// PLATFORM WEBSITE BUILDER
+// =========================
+
+
+// Templates Builder
+
+import platformWebsiteTemplateRoutes
+
+from "./scr/routes/platform.website.templates.js";
+
+
+
+
+// Sections Builder
+
+import platformWebsiteSectionRoutes
+
+from "./scr/routes/platform.website.sections.js";
+
+
+
+
+// Website Renderer Engine
+
+import renderWebsiteRoutes
+
+from "./scr/routes/render.website.routes.js";
+
+
+
+
+
+
 
 
 
@@ -144,6 +183,7 @@ from "./scr/routes/website_ai.routes.js";
 
 
 const app = express();
+
 
 
 
@@ -189,7 +229,6 @@ limit:"10mb"
 
 
 startScheduler();
-
 
 
 
@@ -271,7 +310,6 @@ crmRoutes
 // =========================
 
 
-
 // Website ingestion
 
 app.use(
@@ -281,6 +319,7 @@ app.use(
 websiteRoutes
 
 );
+
 
 
 
@@ -296,7 +335,8 @@ websiteBuilderRoutes
 
 
 
-// Website Content Editor
+
+// Website Content
 
 app.use(
 
@@ -308,7 +348,8 @@ websiteContentRoutes
 
 
 
-// Website Design Settings
+
+// Website Design
 
 app.use(
 
@@ -320,7 +361,8 @@ websiteDesignRoutes
 
 
 
-// Public Websites
+
+// Public Website Data
 
 app.use(
 
@@ -329,6 +371,7 @@ app.use(
 publicWebsiteRoutes
 
 );
+
 
 
 
@@ -344,7 +387,8 @@ websiteLeadRoutes
 
 
 
-// AI Website Generator
+
+// AI Generator
 
 app.use(
 
@@ -353,6 +397,57 @@ app.use(
 websiteAIRoutes
 
 );
+
+
+
+
+
+
+
+
+
+// =========================
+// PLATFORM WEBSITE BUILDER
+// =========================
+
+
+// Admin creates templates
+
+app.use(
+
+"/api/platform/website/templates",
+
+platformWebsiteTemplateRoutes
+
+);
+
+
+
+
+// Admin manages sections
+
+app.use(
+
+"/api/platform/website/sections",
+
+platformWebsiteSectionRoutes
+
+);
+
+
+
+
+// Render published websites
+
+app.use(
+
+"/api/render/website",
+
+renderWebsiteRoutes
+
+);
+
+
 
 
 
@@ -379,6 +474,8 @@ invitationRoutes
 
 
 
+
+
 // =========================
 // PLATFORM OWNER
 // =========================
@@ -397,6 +494,8 @@ platformRoutes
 
 
 
+
+
 // =========================
 // DASHBOARD
 // =========================
@@ -409,6 +508,8 @@ app.use(
 dashboardRoutes
 
 );
+
+
 
 
 
@@ -442,80 +543,59 @@ status:
 services:{
 
 
+whatsapp:"active",
 
-whatsapp:
-"active",
+meta:"active",
 
+email:"active",
 
-meta:
-"active",
+vapi:"active",
 
-
-email:
-"active",
+crm:"active",
 
 
-vapi:
-"active",
+
+// Website
+
+website_ingestion:"active",
+
+website_builder:"active",
+
+website_content:"active",
+
+website_design:"active",
+
+website_ai_generator:"active",
+
+website_template_builder:"active",
+
+website_sections_builder:"active",
+
+website_renderer:"active",
+
+website_leads:"active",
 
 
-crm:
-"active",
 
 
-website_ingestion:
-"active",
+// System
 
+dashboard:"active",
 
-website_builder:
-"active",
+invitations:"active",
 
+platform:"active",
 
-website_content:
-"active",
+export_worker:"active",
 
+scheduler_worker:"active",
 
-website_design:
-"active",
+daily_reports:"active"
 
-
-public_websites:
-"active",
-
-
-website_leads:
-"active",
-
-
-website_ai_generator:
-"active",
-
-
-dashboard:
-"active",
-
-
-invitations:
-"active",
-
-
-platform:
-"active",
-
-
-export_worker:
-"active",
-
-
-scheduler_worker:
-"active",
-
-
-daily_reports:
-"active"
 
 
 }
+
 
 
 });
@@ -575,6 +655,8 @@ error:
 
 
 
+
+
 // =========================
 // START SERVER
 // =========================
@@ -619,7 +701,7 @@ console.log(
 
 console.log(
 
-"✅ Website Builder enabled"
+"✅ CRM + AI + Website Builder enabled"
 
 );
 
