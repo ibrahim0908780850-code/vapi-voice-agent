@@ -11,7 +11,7 @@ const router = express.Router();
 // SAVE DESIGN SETTINGS
 // =====================================
 
-router.post("/save", async (req,res)=>{
+router.post("/save", async(req,res)=>{
 
 
 try{
@@ -21,77 +21,7 @@ const {
 
 tenant_id,
 
-primary_color,
-
-secondary_color,
-
-font,
-
-logo,
-
-favicon
-
-}=req.body;
-
-
-
-if(!tenant_id){
-
-return res.status(400).json({
-
-success:false,
-
-error:"tenant_required"
-
-});
-
-}
-
-
-
-const supabase =
-
-getSupabase(tenant_id);
-
-
-
-
-
-const {data:existing}=
-
-await supabase
-
-.from("website_design_settings")
-
-.select("id")
-
-.eq(
-
-"tenant_id",
-
-tenant_id
-
-)
-
-.maybeSingle();
-
-
-
-
-
-let result;
-
-
-
-if(existing){
-
-
-
-result = await supabase
-
-.from("website_design_settings")
-
-.update({
+website_id,
 
 primary_color,
 
@@ -103,48 +33,94 @@ logo,
 
 favicon,
 
-updated_at:
-new Date()
+theme,
 
-})
+layout
 
-.eq(
+}=req.body;
 
-"id",
 
-existing.id
 
-)
+if(!tenant_id){
 
-.select()
 
-.single();
+return res.status(400).json({
 
+success:false,
+
+error:"tenant_required"
+
+});
 
 
 }
 
-else{
 
 
 
-result = await supabase
+const supabase = getSupabase();
+
+
+
+
+
+
+const {
+
+data,
+
+error
+
+}= await supabase
 
 .from("website_design_settings")
 
-.insert({
+.upsert({
 
 tenant_id,
 
-primary_color,
+website_id,
 
-secondary_color,
 
-font,
+primary_color:
 
-logo,
+primary_color || "#2563eb",
 
-favicon
+
+secondary_color:
+
+secondary_color || "#1e293b",
+
+
+font:
+
+font || "Cairo",
+
+
+logo:logo || null,
+
+
+favicon:favicon || null,
+
+
+theme:
+
+theme || "modern",
+
+
+layout:
+
+layout || "default",
+
+
+updated_at:new Date()
+
+
+},
+
+{
+
+onConflict:"tenant_id"
 
 })
 
@@ -154,26 +130,29 @@ favicon
 
 
 
-}
+
+
+
+
+if(error)
+
+throw error;
 
 
 
 
 
-if(result.error)
-
-throw result.error;
 
 
-
-
-return res.json({
+res.json({
 
 success:true,
 
-settings:result.data
+settings:data
 
 });
+
+
 
 
 
@@ -192,7 +171,7 @@ error
 
 
 
-return res.status(500).json({
+res.status(500).json({
 
 success:false,
 
@@ -212,10 +191,11 @@ error:error.message
 
 
 
+
+
 // =====================================
 // GET DESIGN SETTINGS
 // =====================================
-
 
 router.get("/:tenant_id", async(req,res)=>{
 
@@ -232,16 +212,19 @@ tenant_id
 
 
 const supabase =
-
-getSupabase(tenant_id);
-
+getSupabase();
 
 
 
 
-const {data,error}=
 
-await supabase
+const {
+
+data,
+
+error
+
+}= await supabase
 
 .from("website_design_settings")
 
@@ -261,9 +244,12 @@ tenant_id
 
 
 
+
 if(error)
 
 throw error;
+
+
 
 
 
@@ -275,6 +261,8 @@ success:true,
 settings:data
 
 });
+
+
 
 
 
@@ -295,8 +283,9 @@ error:error.message
 }
 
 
-
 });
+
+
 
 
 
