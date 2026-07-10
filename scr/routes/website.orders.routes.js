@@ -2,7 +2,6 @@ import express from "express";
 
 import { getSupabase } from "../config/supabase.js";
 
-
 const router = express.Router();
 
 
@@ -11,139 +10,128 @@ const router = express.Router();
 // CUSTOMER CREATE WEBSITE ORDER
 // =====================================
 
+router.post("/create", async (req, res) => {
 
-router.post("/create", async(req,res)=>{
+    try {
 
 
-try{
+        const {
 
+            customer_name,
+            company_name,
+            email,
+            phone,
+            industry_type,
+            template_id,
+            meta
 
-const {
+        } = req.body;
 
-customer_name,
 
-company_name,
 
-email,
+        if(
+            !customer_name ||
+            !company_name ||
+            !industry_type
+        ){
 
-phone,
+            return res.status(400).json({
 
-industry_type,
+                success:false,
 
-template_id
+                error:"missing_data"
 
-}=req.body;
+            });
 
+        }
 
 
-if(
-!customer_name ||
-!company_name ||
-!industry_type
-){
 
+        const supabase = getSupabase();
 
-return res.status(400).json({
 
-success:false,
 
-error:"missing_data"
+        const {
 
-});
+            data,
 
-}
+            error
 
+        } = await supabase
 
+        .from("website_orders")
 
-const supabase = getSupabase();
+        .insert({
 
+            customer_name,
 
+            company_name,
 
+            email,
 
-const {
+            phone,
 
-data,
+            industry_type,
 
-error
+            template_id,
 
-}=
+            status:"pending",
 
+            meta: meta || {}
 
-await supabase
+        })
 
-.from("website_orders")
+        .select()
 
-.insert({
+        .single();
 
-customer_name,
 
-company_name,
 
-email,
 
-phone,
+        if(error)
 
-industry_type,
+            throw error;
 
-template_id,
 
-status:"pending"
 
-})
 
-.select()
+        res.json({
 
-.single();
+            success:true,
 
+            message:
+            "Website request created",
 
+            order:data
 
+        });
 
 
-if(error)
 
-throw error;
+    }
 
+    catch(error){
 
 
+        console.error(
 
+            "Website Order Error",
 
-res.json({
+            error
 
-success:true,
+        );
 
-message:"Website request created",
 
-order:data
+        res.status(500).json({
 
-});
+            success:false,
 
+            error:error.message
 
+        });
 
-}
 
-catch(error){
-
-
-console.error(
-
-"Website Order Error",
-
-error
-
-);
-
-
-
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
+    }
 
 
 });
@@ -160,91 +148,181 @@ error:error.message
 // ADMIN GET ALL ORDERS
 // =====================================
 
-
 router.get("/", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const supabase=getSupabase();
+        const supabase =
+        getSupabase();
 
 
 
-const {
+        const {
 
-data,
+            data,
 
-error
+            error
 
-}=
+        } = await supabase
 
+        .from("website_orders")
 
-await supabase
+        .select(`
 
-.from("website_orders")
+            *,
 
-.select(`
+            website_templates(
+                name,
+                category
+            )
 
-*,
+        `)
 
-website_templates(
+        .order(
 
-name
+            "created_at",
 
-)
+            {
+                ascending:false
+            }
 
-`)
-
-.order(
-
-"created_at",
-
-{
-
-ascending:false
-
-}
-
-);
+        );
 
 
 
 
+        if(error)
 
-if(error)
-
-throw error;
-
+            throw error;
 
 
 
-res.json({
 
-success:true,
+        res.json({
 
-orders:data
+            success:true,
+
+            orders:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
 
 
-}
-
-catch(error){
 
 
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
 
 
-}
 
+
+// =====================================
+// GET SINGLE ORDER
+// =====================================
+
+router.get("/:id", async(req,res)=>{
+
+
+    try{
+
+
+        const {
+
+            id
+
+        } = req.params;
+
+
+
+        const supabase =
+        getSupabase();
+
+
+
+        const {
+
+            data,
+
+            error
+
+        } = await supabase
+
+        .from("website_orders")
+
+        .select(`
+
+            *,
+
+            website_templates(*)
+
+        `)
+
+        .eq(
+
+            "id",
+
+            id
+
+        )
+
+        .single();
+
+
+
+
+        if(error)
+
+            throw error;
+
+
+
+
+        res.json({
+
+            success:true,
+
+            order:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
 
 
 });
@@ -261,102 +339,127 @@ error:error.message
 // UPDATE ORDER STATUS
 // =====================================
 
-
 router.patch("/:id/status", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const {
+        const {
 
-id
+            id
 
-}=req.params;
-
-
-const {
-
-status
-
-}=req.body;
+        } = req.params;
 
 
 
+        const {
 
-const supabase=getSupabase();
+            status
 
-
-
-
-const {
-
-data,
-
-error
-
-}=
+        } = req.body;
 
 
-await supabase
 
-.from("website_orders")
+        const allowed = [
 
-.update({
+            "pending",
+            "reviewing",
+            "approved",
+            "building",
+            "completed",
+            "failed"
 
-status
+        ];
 
-})
 
-.eq(
 
-"id",
+        if(!allowed.includes(status)){
 
-id
 
-)
+            return res.status(400).json({
 
-.select()
+                success:false,
 
-.single();
+                error:"invalid_status"
+
+            });
+
+
+        }
 
 
 
 
-
-if(error)
-
-throw error;
+        const supabase =
+        getSupabase();
 
 
 
+        const {
 
-res.json({
+            data,
 
-success:true,
+            error
 
-order:data
+        } = await supabase
 
-});
+        .from("website_orders")
+
+        .update({
+
+            status
+
+        })
+
+        .eq(
+
+            "id",
+
+            id
+
+        )
+
+        .select()
+
+        .single();
 
 
 
-}
-
-catch(error){
 
 
-res.status(500).json({
+        if(error)
 
-success:false,
-
-error:error.message
-
-});
+            throw error;
 
 
-}
 
+
+        res.json({
+
+            success:true,
+
+            order:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
 
 
 });
@@ -373,106 +476,220 @@ error:error.message
 // ASSIGN TEMPLATE
 // =====================================
 
-
 router.patch("/:id/template", async(req,res)=>{
 
 
-try{
+    try{
 
 
-const {
+        const {
 
-id
+            id
 
-}=req.params;
-
-
-const {
-
-template_id
-
-}=req.body;
+        } = req.params;
 
 
 
-const supabase=getSupabase();
+        const {
+
+            template_id
+
+        } = req.body;
+
+
+
+        if(!template_id){
+
+
+            return res.status(400).json({
+
+                success:false,
+
+                error:"template_required"
+
+            });
+
+
+        }
+
+
+
+        const supabase =
+        getSupabase();
+
+
+
+        const {
+
+            data,
+
+            error
+
+        } = await supabase
+
+        .from("website_orders")
+
+        .update({
+
+            template_id,
+
+            status:"approved"
+
+        })
+
+        .eq(
+
+            "id",
+
+            id
+
+        )
+
+        .select()
+
+        .single();
 
 
 
 
-const {
+        if(error)
 
-data,
-
-error
-
-}=
-
-
-await supabase
-
-.from("website_orders")
-
-.update({
-
-template_id,
-
-status:"processing"
-
-})
-
-.eq(
-
-"id",
-
-id
-
-)
-
-.select()
-
-.single();
+            throw error;
 
 
 
 
+        res.json({
 
-if(error)
+            success:true,
 
-throw error;
+            order:data
+
+        });
 
 
 
+    }
 
-res.json({
+    catch(error){
 
-success:true,
 
-order:data
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
 
 
-}
-
-catch(error){
 
 
-res.status(500).json({
 
-success:false,
 
-error:error.message
+
+
+// =====================================
+// APPROVE ORDER
+// =====================================
+
+router.post("/:id/approve", async(req,res)=>{
+
+
+    try{
+
+
+        const {
+
+            id
+
+        } = req.params;
+
+
+
+        const supabase =
+        getSupabase();
+
+
+
+        const {
+
+            data,
+
+            error
+
+        } = await supabase
+
+        .from("website_orders")
+
+        .update({
+
+            status:"approved"
+
+        })
+
+        .eq(
+
+            "id",
+
+            id
+
+        )
+
+        .select()
+
+        .single();
+
+
+
+
+
+        if(error)
+
+            throw error;
+
+
+
+
+        res.json({
+
+            success:true,
+
+            message:
+            "Order approved",
+
+            order:data
+
+        });
+
+
+
+    }
+
+    catch(error){
+
+
+        res.status(500).json({
+
+            success:false,
+
+            error:error.message
+
+        });
+
+
+    }
+
 
 });
 
-
-}
-
-
-
-});
 
 
 
