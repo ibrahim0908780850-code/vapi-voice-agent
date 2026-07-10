@@ -79,6 +79,7 @@ from "./scr/routes/dashboard.js";
 
 
 
+
 // =========================
 // WEBSITE SYSTEM
 // =========================
@@ -140,6 +141,9 @@ from "./scr/routes/website_ai.routes.js";
 
 
 
+
+
+
 // =========================
 // PLATFORM WEBSITE BUILDER
 // =========================
@@ -163,11 +167,29 @@ from "./scr/routes/platform.website.sections.js";
 
 
 
-// Website Renderer Engine
+// Renderer Engine
 
 import renderWebsiteRoutes
 
 from "./scr/routes/render.website.routes.js";
+
+
+
+
+// Website Orders
+
+import websiteOrdersRoutes
+
+from "./scr/routes/website.orders.routes.js";
+
+
+
+
+// Website Generator
+
+import websiteGeneratorRoutes
+
+from "./scr/routes/website.generator.routes.js";
 
 
 
@@ -305,6 +327,7 @@ crmRoutes
 
 
 
+
 // =========================
 // WEBSITE SYSTEM
 // =========================
@@ -395,6 +418,42 @@ app.use(
 "/website/ai",
 
 websiteAIRoutes
+
+);
+
+
+
+
+
+
+
+
+
+// =========================
+// WEBSITE SALES SYSTEM
+// =========================
+
+
+// Customer website orders
+
+app.use(
+
+"/website/orders",
+
+websiteOrdersRoutes
+
+);
+
+
+
+
+// Build website automatically
+
+app.use(
+
+"/website/generator",
+
+websiteGeneratorRoutes
 
 );
 
@@ -517,8 +576,6 @@ dashboardRoutes
 
 
 
-
-
 // =========================
 // HEALTH CHECK
 // =========================
@@ -572,6 +629,10 @@ website_template_builder:"active",
 website_sections_builder:"active",
 
 website_renderer:"active",
+
+website_orders:"active",
+
+website_generator:"active",
 
 website_leads:"active",
 
