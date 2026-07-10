@@ -13,7 +13,6 @@ const router = express.Router();
 // GENERATE WEBSITE CONTENT
 // =====================================
 
-
 router.post("/generate", async(req,res)=>{
 
 
@@ -23,6 +22,8 @@ try{
 const {
 
 tenant_id,
+
+website_id,
 
 industry_type,
 
@@ -53,22 +54,23 @@ error:"missing_data"
 
 
 
-const supabase =
-
-getSupabase(tenant_id);
+const supabase = getSupabase();
 
 
 
 
 
 // =========================
-// AI REQUEST
+// BUILD AI CONTEXT
 // =========================
 
 
 const prompt = `
 
-Create professional website content.
+You are a professional website copywriter.
+
+Create website content for this company.
+
 
 Company:
 
@@ -77,27 +79,28 @@ ${company_name}
 
 Industry:
 
-${industry_type}
+${industry_type || "business"}
 
 
-City:
+Location:
 
-${city}
+${city || ""}
 
 
-Return JSON:
+
+Return ONLY valid JSON:
 
 {
 
-hero_title,
+"hero_title":"",
 
-hero_description,
+"hero_description":"",
 
-about_text,
+"about_text":"",
 
-services,
+"services":[],
 
-faq
+"faq":[]
 
 }
 
@@ -109,19 +112,13 @@ faq
 
 
 
-const aiResult =
-
-await generateAIResponse({
+const aiResult = await generateAIResponse({
 
 tenant_id,
 
-
 message:prompt,
 
-
 channel:"website"
-
-
 
 });
 
@@ -129,10 +126,24 @@ channel:"website"
 
 
 
-const contentText =
+
+let contentText =
 
 aiResult.response || aiResult;
 
+
+
+
+
+// Remove markdown if AI returns ```json
+
+contentText = contentText
+
+.replace(/```json/g,"")
+
+.replace(/```/g,"")
+
+.trim();
 
 
 
@@ -151,21 +162,26 @@ content = JSON.parse(contentText);
 
 }
 
-catch{
+catch(error){
 
 
 content={
 
-hero_title:
-contentText,
+
+hero_title:contentText,
+
 
 hero_description:"",
 
+
 about_text:"",
+
 
 services:[],
 
+
 faq:[]
+
 
 };
 
@@ -179,8 +195,9 @@ faq:[]
 
 
 
+
 // =========================
-// SAVE CONTENT
+// SAVE WEBSITE CONTENT
 // =========================
 
 
@@ -190,50 +207,42 @@ data,
 
 error
 
-}=
-
-
-await supabase
+}= await supabase
 
 .from("website_content")
 
 .upsert({
 
+
 tenant_id,
 
 
 hero_title:
-
 content.hero_title,
 
 
 hero_description:
-
 content.hero_description,
 
 
 about_text:
-
 content.about_text,
 
 
 services:
-
 content.services,
 
 
 faq:
-
 content.faq
+
 
 
 },
 
 {
 
-onConflict:
-
-"tenant_id"
+onConflict:"tenant_id"
 
 })
 
@@ -257,9 +266,49 @@ throw error;
 
 
 
-return res.json({
+
+// =========================
+// SAVE AI KNOWLEDGE
+// =========================
+
+
+await supabase
+
+.from("ai_knowledge_base")
+
+.insert({
+
+tenant_id,
+
+
+category:"website",
+
+
+title:
+
+`${company_name} website information`,
+
+
+content:
+
+JSON.stringify(content)
+
+
+
+});
+
+
+
+
+
+
+
+
+
+res.json({
 
 success:true,
+
 
 content:data
 
@@ -267,9 +316,13 @@ content:data
 
 
 
+
+
+
 }
 
 catch(error){
+
 
 
 console.error(
@@ -282,7 +335,8 @@ error
 
 
 
-return res.status(500).json({
+
+res.status(500).json({
 
 success:false,
 
@@ -291,11 +345,14 @@ error:error.message
 });
 
 
+
 }
 
 
 
 });
+
+
 
 
 
