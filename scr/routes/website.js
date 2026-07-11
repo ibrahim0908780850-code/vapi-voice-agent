@@ -74,7 +74,8 @@ error:"invalid_url"
 
 
 
-const supabase = getSupabase();
+// Multi tenant connection
+const supabase = getSupabase(tenant_id);
 
 
 
@@ -245,15 +246,11 @@ metadata:{
 
 source:"website",
 
-
 url:websiteUrl.href,
-
 
 domain:websiteUrl.hostname,
 
-
 chunk:index+1
-
 
 }
 
@@ -303,7 +300,11 @@ throw error;
 // =========================
 
 
-await supabase
+const {
+
+error:updateError
+
+}= await supabase
 
 .from("company_settings")
 
@@ -324,6 +325,13 @@ tenant_id
 
 
 
+if(updateError)
+
+throw updateError;
+
+
+
+
 
 
 
@@ -338,7 +346,6 @@ message:
 
 
 chunks:data.length
-
 
 });
 
