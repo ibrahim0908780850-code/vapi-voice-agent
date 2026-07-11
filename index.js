@@ -88,7 +88,7 @@ from "./scr/scr/routes/dashboard.js";
 // Website AI Knowledge
 
 import websiteRoutes
-from "./website.js";
+from "./scr/routes/website.js";
 
 
 
