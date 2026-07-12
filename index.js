@@ -391,7 +391,7 @@ app.use(
 
 "/public/website",
 
-publicWebsiteRoutes
+renderWebsiteRoutes
 
 );
 
