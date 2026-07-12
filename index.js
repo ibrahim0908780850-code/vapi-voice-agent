@@ -1,3 +1,12 @@
+
+import dashboardApiRoutes
+from "./scr/routes/dashboard.api.js";
+
+app.use(
+"/api/dashboard",
+dashboardApiRoutes
+);
+
 import express from "express";
 
 
