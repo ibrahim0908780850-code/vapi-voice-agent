@@ -57,7 +57,27 @@ const client = createClient(
 
       autoRefreshToken:false
 
+    },
+
+
+    realtime: {
+
+      enabled:false
+
+    },
+
+
+    global: {
+
+      headers: {
+
+        "x-application-name":
+        "SALIH-AI-CRM"
+
+      }
+
     }
+
 
   }
 
@@ -111,7 +131,9 @@ export function requireTenant(tenant_id){
 
 
   return getSupabase(
+
     tenant_id
+
   );
 
 
