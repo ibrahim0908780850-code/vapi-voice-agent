@@ -41,94 +41,60 @@ try {
 
 
 
-  // =========================
-  // MEMORY
-  // =========================
+if(!process.env.GEMINI_API_KEY){
 
-  const memory =
-    await getLeadMemory(
-      tenant_id,
-      phone
-    );
+ throw new Error(
+  "Missing GEMINI_API_KEY"
+ );
+
+}
 
 
 
 
+// =========================
+// MEMORY
+// =========================
 
-  // =========================
-  // LEAD INTELLIGENCE
-  // =========================
+const memory =
 
-  const intelligence =
-    await analyzeLeadIntelligence({
+await getLeadMemory(
 
-      tenant_id,
+  tenant_id,
 
-      phone
+  phone
 
-    }) || {
-
-      stage:"new",
-
-      score:0,
-
-      summary:""
-
-    };
+);
 
 
 
 
 
+// =========================
+// LEAD INTELLIGENCE
+// =========================
 
+const intelligence =
 
-  // =========================
-  // PROPERTY RECOMMENDATIONS
-  // =========================
+await analyzeLeadIntelligence({
 
+  tenant_id,
 
-  const recommendations =
+  phone
 
-    await getPropertyRecommendations(
+})
 
-      tenant_id,
+||
 
-      lead_id
+{
 
-    ) || [];
+ stage:"new",
 
+ score:0,
 
+ summary:""
 
-
-
-  const formattedRecommendations =
-
-    recommendations.map(r => ({
-
-      title:
-      r.property?.title || "",
-
-
-      price:
-      r.property?.price || "",
-
-
-      city:
-      r.property?.city || "",
-
-
-      type:
-      r.property?.type || "",
-
-
-      bedrooms:
-      r.property?.bedrooms || "",
-
-
-      score:
-      r.score || 0
-
-    }));
+};
 
 
 
@@ -136,13 +102,89 @@ try {
 
 
 
+// =========================
+// PROPERTY RECOMMENDATIONS
+// =========================
 
-  // =========================
-  // AI PROMPT
-  // =========================
+
+const recommendations =
+
+lead_id
+
+?
+
+await getPropertyRecommendations(
+
+ tenant_id,
+
+ lead_id
+
+)
+
+:
+
+[];
 
 
-  const prompt = `
+
+
+
+const formattedRecommendations =
+
+recommendations.map(r => ({
+
+
+title:
+
+r.property?.title || "",
+
+
+
+price:
+
+r.property?.price || "",
+
+
+
+city:
+
+r.property?.city || "",
+
+
+
+type:
+
+r.property?.type || "",
+
+
+
+bedrooms:
+
+r.property?.bedrooms || "",
+
+
+
+score:
+
+r.score || 0
+
+
+}));
+
+
+
+
+
+
+
+
+
+// =========================
+// AI PROMPT
+// =========================
+
+
+const prompt = `
 
 أنت SALIH AI.
 
@@ -152,6 +194,7 @@ try {
 معلومات الشركة:
 
 ${tenantContext}
+
 
 
 
@@ -170,15 +213,23 @@ ${intelligence.summary}
 
 
 
+
 ذاكرة العميل:
 
 ${
 memory?.messages
+
 ?.map(m => m.message)
+
 .join("\n")
+
 ||
+
 "لا يوجد سجل سابق"
+
 }
+
+
 
 
 
@@ -188,13 +239,19 @@ ${message}
 
 
 
+
 العقارات المتاحة:
 
 ${JSON.stringify(
+
 formattedRecommendations,
+
 null,
+
 2
+
 )}
+
 
 
 
@@ -207,12 +264,14 @@ null,
 - حاول تحويل العميل إلى موعد.
 - اجعل الرد مختصر واحترافي.
 - لا تقل أنك ذكاء اصطناعي.
+- اسأل سؤالاً واحداً فقط في كل مرة.
 
 
 
 القناة:
 
 ${channel}
+
 
 `;
 
@@ -223,40 +282,54 @@ ${channel}
 
 
 
-  // =========================
-  // GEMINI
-  // =========================
+
+// =========================
+// GEMINI
+// =========================
 
 
-  const response =
+const response =
 
-    await axios.post(
+await axios.post(
 
 
 `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.5-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
 
 
+
 {
+
 
 contents:[
 
+
 {
+
 
 parts:[
 
+
 {
+
 
 text:prompt
 
+
 }
+
 
 ]
 
+
 }
+
 
 ]
 
+
 }
+
+
 
 );
 
@@ -265,54 +338,28 @@ text:prompt
 
 
 
-  const aiResponse =
-
-    response
-    ?.data
-    ?.candidates?.[0]
-    ?.content
-    ?.parts?.[0]
-    ?.text
-
-    ||
-
-    "مرحباً 👋 كيف يمكنني مساعدتك؟";
 
 
+const aiResponse =
 
 
+response
+
+?.data
+
+?.candidates?.[0]
+
+?.content
+
+?.parts?.[0]
+
+?.text
 
 
+||
 
 
-  // =========================
-  // AUTOPILOT
-  // =========================
-
-
-  await runAutopilot({
-
-    tenant_id,
-
-    lead_id,
-
-    channel,
-
-    recommendations,
-
-    aiResponse,
-
-
-    intelligence,
-
-
-    user_id,
-
-    email,
-
-    phone
-
-  });
+"مرحباً 👋 كيف يمكنني مساعدتك؟";
 
 
 
@@ -322,26 +369,67 @@ text:prompt
 
 
 
-  // =========================
-  // RETURN
-  // =========================
+// =========================
+// AUTOPILOT
+// =========================
 
 
-  return {
+await runAutopilot({
 
-    response:
+ tenant_id,
 
-    aiResponse,
+ lead_id,
+
+ channel,
+
+ recommendations,
+
+ aiResponse,
+
+ intelligence,
+
+ user_id,
+
+ email,
+
+ phone
+
+});
 
 
-    recommendations:
-
-    formattedRecommendations,
 
 
-    intelligence
 
-  };
+
+
+
+
+// =========================
+// RETURN
+// =========================
+
+
+return {
+
+
+response:
+
+
+aiResponse,
+
+
+
+recommendations:
+
+
+formattedRecommendations,
+
+
+
+intelligence
+
+
+};
 
 
 
@@ -352,6 +440,7 @@ text:prompt
 }
 
 catch(error){
+
 
 
 console.error(
@@ -372,9 +461,11 @@ response:
 "حدث خطأ مؤقت، حاول مرة أخرى لاحقاً.",
 
 
+
 recommendations:
 
 [],
+
 
 
 intelligence:
