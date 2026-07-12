@@ -1,8 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 
-const supabaseUrl = process.env.SUPABASE_URL;
 
-const secretKey = process.env.SUPABASE_SECRET_KEY;
+const supabaseUrl =
+  process.env.SUPABASE_URL;
+
+
+const secretKey =
+  process.env.SUPABASE_SECRET_KEY;
+
 
 
 if (!supabaseUrl || !secretKey) {
@@ -12,6 +18,7 @@ if (!supabaseUrl || !secretKey) {
   );
 
 }
+
 
 
 export const supabaseAdmin = createClient(
@@ -27,6 +34,13 @@ export const supabaseAdmin = createClient(
       autoRefreshToken: false,
 
       persistSession: false
+
+    },
+
+
+    realtime: {
+
+      transport: ws
 
     }
 
