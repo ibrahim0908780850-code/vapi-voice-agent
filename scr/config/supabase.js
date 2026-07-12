@@ -1,6 +1,7 @@
 // scr/config/supabase.js
 
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 
 // =========================
@@ -62,22 +63,9 @@ const client = createClient(
 
     realtime: {
 
-      enabled:false
-
-    },
-
-
-    global: {
-
-      headers: {
-
-        "x-application-name":
-        "SALIH-AI-CRM"
-
-      }
+      transport: ws
 
     }
-
 
   }
 
