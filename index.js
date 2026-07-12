@@ -116,14 +116,6 @@ from "./scr/routes/website_design.routes.js";
 
 
 
-// render Website
-
-import publicWebsiteRoutes
-
-from "./scr/routes/render.website.routes.js";
-
-
-
 // Website Leads
 
 import websiteLeadRoutes
