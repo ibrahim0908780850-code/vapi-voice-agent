@@ -431,7 +431,6 @@ tenantContext
 
 });
 
-
 const aiReply =
 
 aiResult?.response ||
@@ -439,6 +438,31 @@ aiResult?.response ||
 aiResult ||
 
 "";
+
+
+
+/*
+=========================
+DEAL INTELLIGENCE
+=========================
+*/
+
+
+const dealResult =
+
+await analyzeDeal({
+
+lead,
+
+message:
+userMessage,
+
+tenantContext
+
+});
+
+
+
 /*
 =========================
 LEAD ROUTING TO SALES TEAM
@@ -447,11 +471,14 @@ LEAD ROUTING TO SALES TEAM
 
 
 if (
-  dealResult.score >= 70
+
+dealResult.score >= 70
+
 ) {
 
 
   // تحديث حالة العميل
+
   await supabase
 
   .from("leads")
@@ -487,40 +514,39 @@ if (
 
   const { data: salesAgent } =
 
-    await supabase
+  await supabase
 
-    .from("users")
+  .from("users")
 
-    .select("id")
+  .select("id")
 
-    .eq(
+  .eq(
 
-      "tenant_id",
+    "tenant_id",
 
-      tenant_id
+    tenant_id
 
-    )
+  )
 
-    .eq(
+  .eq(
 
-      "role",
+    "role",
 
-      "agent"
+    "agent"
 
-    )
+  )
 
-    .eq(
+  .eq(
 
-      "is_active",
+    "is_active",
 
-      true
+    true
 
-    )
+  )
 
-    .limit(1)
+  .limit(1)
 
-    .maybeSingle();
-
+  .maybeSingle();
 
 
 
@@ -532,6 +558,7 @@ if (
 
     // ربط العميل بالموظف
 
+
     await supabase
 
     .from("leads")
@@ -539,6 +566,7 @@ if (
     .update({
 
       assigned_to:
+
       salesAgent.id
 
     })
@@ -572,18 +600,22 @@ if (
 
 
       title:
+
       "🔥 Lead ساخن جديد",
 
 
       body:
+
       `عميل مهتم يحتاج متابعة: ${phone}`,
 
 
       type:
+
       "hot_lead"
 
 
     });
+
 
 
 
@@ -606,21 +638,79 @@ if (
 
 
       lead_id:
+
       lead.id,
 
 
       action:
+
       "lead_assigned",
 
 
       note:
+
       `تم تحويل العميل لفريق المبيعات`
 
     });
-
 
 
   }
 
 
 }
+
+
+
+
+// =========================
+// RESPONSE
+// =========================
+
+
+return res.json({
+
+success:true,
+
+channel,
+
+lead,
+
+response:
+
+aiReply
+
+});
+
+
+
+
+} catch(error) {
+
+
+console.error(
+
+"AI Gateway Error:",
+
+error
+
+);
+
+
+
+return res.status(500).json({
+
+success:false,
+
+error:"server_error"
+
+});
+
+
+}
+
+
+});
+
+
+
+export default router;
