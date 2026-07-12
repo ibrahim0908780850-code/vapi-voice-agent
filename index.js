@@ -118,7 +118,7 @@ from "./scr/routes/website_design.routes.js";
 
 // render Website
 
-import renderWebsiteRoutes
+import publicWebsiteRoutes
 
 from "./scr/routes/render.website.routes.js";
 
