@@ -2,7 +2,7 @@ import express from "express";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-import { getSupabase } from "./scr/config/supabase.js";
+import { getSupabase } from "../config/supabase.js";
 
 
 const router = express.Router();
