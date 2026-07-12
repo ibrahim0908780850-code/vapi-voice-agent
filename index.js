@@ -120,7 +120,7 @@ from "./scr/routes/website_design.routes.js";
 
 import publicWebsiteRoutes
 
-from "./scr/routes/public_website.routes.js";
+from "./scr/routes/render/website.routes.js";
 
 
 
