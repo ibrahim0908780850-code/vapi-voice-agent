@@ -116,11 +116,11 @@ from "./scr/routes/website_design.routes.js";
 
 
 
-// Public Website
+// render Website
 
-import publicWebsiteRoutes
+import renderWebsiteRoutes
 
-from "./scr/routes/render/website.routes.js";
+from "./scr/routes/render.website.routes.js";
 
 
 
