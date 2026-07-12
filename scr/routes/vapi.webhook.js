@@ -49,6 +49,7 @@ router.post("/", async (req, res) => {
 
 
     // الرقم الذي استقبل المكالمة
+
     const calledNumber =
 
       req.body?.message?.phoneNumber ||
@@ -58,20 +59,29 @@ router.post("/", async (req, res) => {
 
 
 
+    if(!assistantId){
+
+      throw new Error(
+        "Missing assistantId"
+      );
+
+    }
+
+
 
     // =========================
-    // RESOLVE TENANT
+    // FIND TENANT CHANNEL
     // =========================
 
 
-    const supabase =
+    const publicSupabase =
       getSupabase();
 
 
 
-    const { data: channel } =
+    const { data: channel, error } =
 
-      await supabase
+      await publicSupabase
 
       .from("tenant_channels")
 
@@ -87,9 +97,17 @@ router.post("/", async (req, res) => {
         assistantId
       )
 
-      .single();
+      .maybeSingle();
 
 
+
+
+
+    if(error){
+
+      throw error;
+
+    }
 
 
 
@@ -110,6 +128,18 @@ router.post("/", async (req, res) => {
 
 
 
+    // =========================
+    // TENANT SUPABASE CLIENT
+    // =========================
+
+
+    const supabase =
+
+      getSupabase(
+        tenant_id
+      );
+
+
 
 
     // =========================
@@ -121,7 +151,9 @@ router.post("/", async (req, res) => {
 
       await axios.post(
 
+
         `${process.env.BASE_URL}/ai_gateway`,
+
 
         {
 
@@ -183,6 +215,31 @@ router.post("/", async (req, res) => {
 
 
 
+    // =========================
+    // SAVE CALL LOG
+    // =========================
+
+
+    await supabase
+
+    .from("calls")
+
+    .insert({
+
+      tenant_id,
+
+      phone,
+
+      channel:"voice",
+
+      status:"completed"
+
+    });
+
+
+
+
+
 
     // =========================
     // VAPI RESPONSE
@@ -211,7 +268,11 @@ router.post("/", async (req, res) => {
 
             reply:
 
-            response.data?.results?.[0]?.result || "",
+            response.data?.response ||
+
+            response.data?.result ||
+
+            "",
 
 
             tenant_id
@@ -264,7 +325,10 @@ router.post("/", async (req, res) => {
           JSON.stringify({
 
 
-            error:"vapi_error"
+            error:"vapi_error",
+
+
+            message:error.message
 
 
           })
