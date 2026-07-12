@@ -55,6 +55,10 @@ getSupabase(tenant_id);
 
 const channel =
 
+req.body?.channel
+
+||
+
 req.headers["x-channel"]
 
 ||
@@ -116,42 +120,104 @@ console.log(
 }
 
 
+// =========================
+// ASK_SALIH_AI DIRECT BODY
+// =========================
+
+
+if(req.body?.message && typeof req.body.message === "string"){
+
+toolArgs.message = req.body.message;
+
+}
+
+
+if(req.body?.phoneNumber){
+
+toolArgs.phoneNumber = req.body.phoneNumber;
+
+}
+
+
+if(req.body?.customerName){
+
+toolArgs.customerName = req.body.customerName;
+
+}
+
+
+if(req.body?.channel){
+
+toolArgs.channel = req.body.channel;
+
+}
+
+
+
 
 
 
 const fullName =
 
-toolArgs.fullName || null;
+toolArgs.fullName
+
+||
+
+toolArgs.customerName
+
+||
+
+null;
 
 
 
 const toolPhone =
 
-toolArgs.phoneNumber || null;
+toolArgs.phoneNumber
+
+||
+
+null;
 
 
 
 const area =
 
-toolArgs.area || null;
+toolArgs.area
+
+||
+
+null;
 
 
 
 const budget =
 
-toolArgs.budget || null;
+toolArgs.budget
+
+||
+
+null;
 
 
 
 const intent =
 
-toolArgs.intent || null;
+toolArgs.intent
+
+||
+
+null;
 
 
 
 const propertyType =
 
-toolArgs.propertyType || null;
+toolArgs.propertyType
+
+||
+
+null;
 
 
 
@@ -201,11 +267,11 @@ null;
 
 const userMessage =
 
-req.body?.message?.text
+toolArgs.message
 
 ||
 
-req.body?.message
+req.body?.message?.text
 
 ||
 
@@ -221,7 +287,7 @@ req.body?.text
 
 
 // =========================
-// CREATE LEAD ONLY TOOL
+// CREATE LEAD
 // submit_lead
 // =========================
 
@@ -301,7 +367,6 @@ onConflict:
 
 "phone,tenant_id"
 
-
 }
 
 )
@@ -331,7 +396,7 @@ throw result.error;
 
 
 // =========================
-// GET COMPANY DATA
+// COMPANY DATA
 // =========================
 
 
@@ -360,7 +425,7 @@ tenant_id
 
 
 // =========================
-// GET AI AGENT
+// AI AGENT
 // =========================
 
 
@@ -443,7 +508,7 @@ phone
 
 
 // =========================
-// AI CONTEXT
+// BUILD CONTEXT
 // =========================
 
 
@@ -552,7 +617,7 @@ tenantContext
 
 if(
 
-dealResult.score >= 70
+dealResult?.score >= 70
 
 ){
 
@@ -596,13 +661,18 @@ lead.id
 
 
 // =========================
-// RESPONSE FOR VAPI
+// VAPI RESPONSE
 // =========================
 
 
 return res.json({
 
 success:true,
+
+
+result:
+
+aiReply,
 
 
 response:
