@@ -19,7 +19,11 @@ router.post("/", async (req, res) => {
 
 
 const toolCallId =
-req.body?.message?.toolCalls?.[0]?.id ||
+
+req.body?.message?.toolCalls?.[0]?.id
+
+||
+
 crypto.randomUUID();
 
 
@@ -32,10 +36,13 @@ try {
 // =========================
 
 const tenant_id =
+
 await resolveTenant(req);
 
 
+
 const supabase =
+
 getSupabase(tenant_id);
 
 
@@ -45,32 +52,22 @@ getSupabase(tenant_id);
 // CHANNEL
 // =========================
 
+
 const channel =
 
 req.headers["x-channel"]
 
 ||
 
-(
-req.body?.message?.assistantId
-
-?
-
-"voice"
-
-:
-
-"whatsapp"
-
-);
-
+"voice";
 
 
 
 
 // =========================
-// VAPI TOOL DATA
+// TOOL DATA
 // =========================
+
 
 let toolArgs = {};
 
@@ -79,13 +76,18 @@ const rawArgs =
 req.body?.message
 ?.toolCalls?.[0]
 ?.function
-?.arguments;
+?.arguments
+
+||
+
+req.body?.arguments;
 
 
 
 if(rawArgs){
 
 try{
+
 
 toolArgs =
 
@@ -100,7 +102,9 @@ JSON.parse(rawArgs)
 rawArgs;
 
 
-}catch(e){
+}
+
+catch(error){
 
 console.log(
 "Tool arguments parse error"
@@ -108,42 +112,46 @@ console.log(
 
 }
 
+
 }
 
 
 
+
+
 const fullName =
+
 toolArgs.fullName || null;
 
 
+
 const toolPhone =
+
 toolArgs.phoneNumber || null;
 
 
+
 const area =
+
 toolArgs.area || null;
 
 
+
 const budget =
+
 toolArgs.budget || null;
 
 
+
 const intent =
+
 toolArgs.intent || null;
 
 
+
 const propertyType =
+
 toolArgs.propertyType || null;
-
-
-
-const isToolCall =
-
-req.body?.message
-?.toolCalls
-?.length > 0;
-
-
 
 
 
@@ -166,15 +174,13 @@ req.body?.message
 
 ||
 
-req.body?.entry?.[0]
-?.changes?.[0]
-?.value
-?.contacts?.[0]
-?.wa_id
+req.body?.customer
+?.phone
 
 ||
 
 "unknown";
+
 
 
 
@@ -191,18 +197,19 @@ null;
 
 
 
+
+
 const userMessage =
 
 req.body?.message?.text
 
 ||
 
-req.body?.entry?.[0]
-?.changes?.[0]
-?.value
-?.messages?.[0]
-?.text
-?.body
+req.body?.message
+
+||
+
+req.body?.text
 
 ||
 
@@ -213,22 +220,33 @@ req.body?.entry?.[0]
 
 
 
-
-
 // =========================
-// CREATE / UPDATE LEAD
+// CREATE LEAD ONLY TOOL
+// submit_lead
 // =========================
 
 
-const {
+let lead = null;
 
-data:lead,
 
-error:leadError
 
-}
+if(
 
-=
+fullName
+
+||
+
+propertyType
+
+||
+
+intent
+
+){
+
+
+
+const result =
 
 await supabase
 
@@ -238,10 +256,12 @@ await supabase
 
 {
 
+
 tenant_id,
 
 
 full_name:
+
 fullName,
 
 
@@ -252,6 +272,7 @@ email,
 
 
 city:
+
 area,
 
 
@@ -262,18 +283,24 @@ intent,
 
 
 property_type:
+
 propertyType,
 
 
 source:
+
 channel
 
+
 },
+
 
 {
 
 onConflict:
+
 "phone,tenant_id"
+
 
 }
 
@@ -285,8 +312,110 @@ onConflict:
 
 
 
-if(leadError)
-throw leadError;
+
+lead = result.data;
+
+
+
+if(result.error)
+
+throw result.error;
+
+
+
+}
+
+
+
+
+
+
+// =========================
+// GET COMPANY DATA
+// =========================
+
+
+const {data:company}=
+
+await supabase
+
+.from("company_settings")
+
+.select("*")
+
+.eq(
+
+"tenant_id",
+
+tenant_id
+
+)
+
+.single();
+
+
+
+
+
+
+
+// =========================
+// GET AI AGENT
+// =========================
+
+
+const {data:agent}=
+
+await supabase
+
+.from("ai_agents")
+
+.select("*")
+
+.eq(
+
+"tenant_id",
+
+tenant_id
+
+)
+
+.eq(
+
+"status",
+
+"active"
+
+)
+
+.maybeSingle();
+
+
+
+
+
+
+
+// =========================
+// KNOWLEDGE BASE
+// =========================
+
+
+const {data:knowledge}=
+
+await supabase
+
+.from("ai_knowledge_base")
+
+.select("*")
+
+.eq(
+
+"tenant_id",
+
+tenant_id
+
+);
 
 
 
@@ -296,6 +425,7 @@ throw leadError;
 // =========================
 // MEMORY
 // =========================
+
 
 const memory =
 
@@ -311,81 +441,11 @@ phone
 
 
 
-// =========================
-// COMPANY DATA
-// =========================
-
-const {data:company}=
-
-await supabase
-
-.from("company_settings")
-
-.select("*")
-
-.eq(
-"tenant_id",
-tenant_id
-)
-
-.single();
-
-
-
-
 
 // =========================
-// AI AGENT
+// AI CONTEXT
 // =========================
 
-const {data:agent}=
-
-await supabase
-
-.from("ai_agents")
-
-.select("*")
-
-.eq(
-"tenant_id",
-tenant_id
-)
-
-.eq(
-"status",
-"active"
-)
-
-.maybeSingle();
-
-
-
-
-
-// =========================
-// KNOWLEDGE BASE
-// =========================
-
-const {data:knowledge}=
-
-await supabase
-
-.from("ai_knowledge_base")
-
-.select("*")
-
-.eq(
-"tenant_id",
-tenant_id
-);
-
-
-
-
-
-// =========================
-// BUILD AI CONTEXT
-// =========================
 
 const tenantContext =
 
@@ -405,9 +465,13 @@ knowledge
 
 
 
+
+
+
 // =========================
 // AI RESPONSE
 // =========================
+
 
 const aiResult =
 
@@ -415,37 +479,56 @@ await generateAIResponse({
 
 tenant_id,
 
+
 lead_id:
-lead.id,
+
+lead?.id || null,
+
 
 message:
+
 userMessage,
+
 
 phone,
 
+
 email,
+
 
 channel,
 
+
 tenantContext
+
 
 });
 
+
+
+
+
 const aiReply =
 
-aiResult?.response ||
+aiResult?.response
 
-aiResult ||
+||
 
 "";
 
 
 
-/*
-=========================
-DEAL INTELLIGENCE
-=========================
-*/
+
+
+
+
+
+// =========================
+// DEAL INTELLIGENCE
+// =========================
+
+
+if(lead){
 
 
 const dealResult =
@@ -454,207 +537,53 @@ await analyzeDeal({
 
 lead,
 
+
 message:
+
 userMessage,
 
+
 tenantContext
+
 
 });
 
 
 
-/*
-=========================
-LEAD ROUTING TO SALES TEAM
-=========================
-*/
-
-
-if (
+if(
 
 dealResult.score >= 70
 
-) {
+){
 
 
-  // تحديث حالة العميل
+await supabase
 
-  await supabase
+.from("leads")
 
-  .from("leads")
+.update({
 
-  .update({
+stage:
 
-    stage:
-    "hot",
+"hot",
 
-    lead_score:
-    dealResult.score
 
-  })
+lead_score:
 
-  .eq(
+dealResult.score
 
-    "id",
+})
 
-    lead.id
+.eq(
 
-  );
+"id",
 
+lead.id
 
+);
 
 
-
-  /*
-  =========================
-  FIND SALES AGENT
-  =========================
-  */
-
-
-  const { data: salesAgent } =
-
-  await supabase
-
-  .from("users")
-
-  .select("id")
-
-  .eq(
-
-    "tenant_id",
-
-    tenant_id
-
-  )
-
-  .eq(
-
-    "role",
-
-    "agent"
-
-  )
-
-  .eq(
-
-    "is_active",
-
-    true
-
-  )
-
-  .limit(1)
-
-  .maybeSingle();
-
-
-
-
-
-
-  if(salesAgent){
-
-
-    // ربط العميل بالموظف
-
-
-    await supabase
-
-    .from("leads")
-
-    .update({
-
-      assigned_to:
-
-      salesAgent.id
-
-    })
-
-    .eq(
-
-      "id",
-
-      lead.id
-
-    );
-
-
-
-
-
-    /*
-    =========================
-    CREATE NOTIFICATION
-    =========================
-    */
-
-
-    await supabase
-
-    .from("notifications")
-
-    .insert({
-
-      tenant_id,
-
-
-      title:
-
-      "🔥 Lead ساخن جديد",
-
-
-      body:
-
-      `عميل مهتم يحتاج متابعة: ${phone}`,
-
-
-      type:
-
-      "hot_lead"
-
-
-    });
-
-
-
-
-
-
-    /*
-    =========================
-    CRM ACTIVITY
-    =========================
-    */
-
-
-    await supabase
-
-    .from("crm_activities")
-
-    .insert({
-
-      tenant_id,
-
-
-      lead_id:
-
-      lead.id,
-
-
-      action:
-
-      "lead_assigned",
-
-
-      note:
-
-      `تم تحويل العميل لفريق المبيعات`
-
-    });
-
-
-  }
+}
 
 
 }
@@ -662,8 +591,12 @@ dealResult.score >= 70
 
 
 
+
+
+
+
 // =========================
-// RESPONSE
+// RESPONSE FOR VAPI
 // =========================
 
 
@@ -671,20 +604,30 @@ return res.json({
 
 success:true,
 
-channel,
-
-lead,
 
 response:
 
-aiReply
+aiReply,
+
+
+tenant_id,
+
+
+lead
+
 
 });
 
 
 
 
-} catch(error) {
+
+
+}
+
+
+catch(error){
+
 
 
 console.error(
@@ -701,7 +644,9 @@ return res.status(500).json({
 
 success:false,
 
-error:"server_error"
+error:
+
+"server_error"
 
 });
 
