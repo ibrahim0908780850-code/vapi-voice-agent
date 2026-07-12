@@ -1,5 +1,5 @@
 import express from "express";
-import { getsupabase } from "../config/supabase.js";
+import { getSupabase } from "../config/supabase.js";
 
 const router = express.Router();
 
@@ -11,37 +11,47 @@ const router = express.Router();
 // POST /website/lead
 // =====================================
 
+
 router.post(
   "/lead",
   async (req, res) => {
 
     try {
 
+
       const {
+
         full_name,
+
         name,
+
         email,
+
         phone,
+
         message,
+
         website_id,
+
         tenant_id,
+
         property_type,
+
         intent,
+
         budget
+
       } = req.body;
 
 
-      // الاسم يدعم أكثر من صيغة
-      const leadName =
-        full_name || name || "Website Visitor";
 
-
-      if (!phone) {
+      if (!tenant_id) {
 
         return res.status(400).json({
 
           success:false,
-          error:"phone_required"
+
+          error:"tenant_id_required"
 
         });
 
@@ -49,89 +59,203 @@ router.post(
 
 
 
-      // إنشاء Lead داخل CRM
+      const supabase =
 
-      const { data, error } = await supabase
-
-        .from("leads")
-
-        .insert({
-
-          tenant_id,
-
-          full_name: leadName,
-
-          phone,
-
-          email: email || null,
-
-          message: message || null,
-
-          property_type:
-            property_type || null,
-
-          intent:
-            intent || null,
-
-          budget:
-            budget || null,
+      getSupabase(tenant_id);
 
 
-          source:"website",
-
-          website_id:
-            website_id || null,
 
 
-          stage:"new"
+
+      // الاسم يدعم أكثر من صيغة
+
+      const leadName =
+
+      full_name ||
+
+      name ||
+
+      "Website Visitor";
 
 
-        })
 
-        .select()
 
-        .single();
+
+      if (!phone) {
+
+
+        return res.status(400).json({
+
+          success:false,
+
+          error:"phone_required"
+
+        });
+
+
+      }
+
+
+
+
+
+      // =====================================
+      // CREATE LEAD IN CRM
+      // =====================================
+
+
+      const {
+
+        data,
+
+        error
+
+      } = await supabase
+
+
+      .from("leads")
+
+
+      .insert({
+
+
+        tenant_id,
+
+
+        full_name:
+
+        leadName,
+
+
+        phone,
+
+
+        email:
+
+        email || null,
+
+
+        notes:
+
+        message || null,
+
+
+        property_type:
+
+        property_type || null,
+
+
+        intent:
+
+        intent || null,
+
+
+        budget:
+
+        budget || null,
+
+
+
+        source:
+
+        "website",
+
+
+
+        website_id:
+
+        website_id || null,
+
+
+
+        stage:
+
+        "new"
+
+
+
+      })
+
+
+      .select()
+
+
+      .single();
+
+
+
+
 
 
 
       if(error){
 
+
         console.error(
+
           "Supabase Lead Error:",
+
           error
+
         );
+
 
 
         return res.status(500).json({
 
+
           success:false,
+
 
           error:"database_error"
 
+
         });
+
 
       }
 
 
 
+
+
+
+
       console.log(
+
         "🌐 New Website Lead:",
+
         data.id
+
       );
 
 
 
-      res.json({
+
+
+
+
+      return res.json({
+
 
         success:true,
 
+
         message:
-          "Lead received successfully",
+
+        "Lead received successfully",
+
+
 
         lead_id:
-          data.id
+
+        data.id
+
+
 
       });
+
+
 
 
 
@@ -140,23 +264,32 @@ router.post(
     catch(error){
 
 
+
       console.error(
+
 
         "Website Lead Error:",
 
+
         error
+
 
       );
 
 
 
-      res.status(500).json({
+
+      return res.status(500).json({
+
 
         success:false,
 
+
         error:"server_error"
 
+
       });
+
 
 
     }
@@ -165,6 +298,9 @@ router.post(
   }
 
 );
+
+
+
 
 
 
