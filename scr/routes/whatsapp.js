@@ -222,6 +222,7 @@ onConflict:
 
 
 if(leadError)
+
 throw leadError;
 
 
@@ -295,11 +296,26 @@ headers:{
 
 
 
+// =========================
+// GET AI REPLY
+// =========================
+
+
 const reply =
 
 aiResponse.data
-?.results?.[0]
-?.result || "";
+
+?.result
+
+||
+
+aiResponse.data
+
+?.response
+
+||
+
+"";
 
 
 
