@@ -3,7 +3,7 @@ import express from "express";
 import { getSupabase } from "../config/supabase.js";
 
 import { authMiddleware }
-from "../middleware/auth.js";
+from "../scr/middleware/auth.js";
 
 import { extractTenant }
 from "../../middleware/tenant.js";
