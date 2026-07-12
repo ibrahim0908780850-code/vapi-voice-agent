@@ -1,12 +1,4 @@
 
-import dashboardApiRoutes
-from "./scr/routes/dashboard.api.js";
-
-app.use(
-"/api/dashboard",
-dashboardApiRoutes
-);
-
 import express from "express";
 
 
@@ -83,6 +75,8 @@ from "./scr/routes/platform.js";
 import dashboardRoutes
 from "./scr/scr/routes/dashboard.js";
 
+import dashboardApiRoutes
+from "./scr/routes/dashboard.api.js";
 
 
 
@@ -240,7 +234,10 @@ limit:"10mb"
 
 );
 
-
+app.use(
+"/api/dashboard",
+dashboardApiRoutes
+);
 
 
 
