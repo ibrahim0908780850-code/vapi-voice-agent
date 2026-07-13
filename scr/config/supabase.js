@@ -53,13 +53,13 @@ export async function getTenantData(
   if(!tenant_id){
 
     throw new Error(
-      "❌ tenant_id required"
+      "❌ Missing tenant_id"
     );
 
   }
 
 
-  const {data,error}=await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from(table)
     .select(select)
     .eq(
@@ -70,12 +70,17 @@ export async function getTenantData(
 
   if(error){
 
+    console.error(
+      `Supabase Error (${table}):`,
+      error
+    );
+
     throw error;
 
   }
 
 
-  return data;
+  return data || [];
 
 }
 
