@@ -85,5 +85,7 @@ export async function getTenantData(
 }
 
 
+export const supabase = supabaseAdmin;
+
 
 export default supabaseAdmin;
