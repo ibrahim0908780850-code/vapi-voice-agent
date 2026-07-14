@@ -15,7 +15,6 @@ import "./scr/workers/export.work.js";
 import "./scr/workers/scheduler.worker.js";
 
 
-import dashboardRoutes from "./routes/dashboard.routes.js";
 
 app.use("/api/dashboard",dashboardRoutes);
 
