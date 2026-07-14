@@ -16,9 +16,6 @@ import "./scr/workers/scheduler.worker.js";
 
 
 
-app.use("/api/dashboard",dashboardRoutes);
-
-
 
 // =========================
 // JOBS
@@ -424,6 +421,7 @@ websiteAIRoutes
 
 
 
+app.use("/api/dashboard",dashboardRoutes);
 
 
 
