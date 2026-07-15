@@ -356,7 +356,7 @@ res.json(data);
 
 
 // =========================
-// AI AGENT
+// AI AGENTS
 // =========================
 
 router.get(
@@ -364,6 +364,9 @@ router.get(
 authMiddleware,
 extractTenant,
 async(req,res)=>{
+
+
+try{
 
 
 const supabase =
@@ -380,20 +383,48 @@ await supabase
 "tenant_id",
 req.tenant_id
 )
-.maybeSingle();
+.order(
+"created_at",
+{
+ascending:false
+}
+);
 
 
 
-if(error)
+if(error){
 
 return res.status(500)
 .json({
+
 error:error.message
+
+});
+
+}
+
+
+
+res.json(
+data || []
+);
+
+
+
+}
+
+catch(error){
+
+
+res.status(500)
+.json({
+
+error:error.message
+
 });
 
 
-
-res.json(data);
+}
 
 
 });
