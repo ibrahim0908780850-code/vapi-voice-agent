@@ -570,18 +570,6 @@ platformRoutes
 // =========================
 
 
-app.use(
-
-"/dashboard",
-
-dashboardRoutes
-
-);
-
-
-
-
-
 
 
 
