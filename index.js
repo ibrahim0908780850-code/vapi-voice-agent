@@ -209,7 +209,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:3000",
-      "https://salih-ai1-puce.vercel.app"
+      "https://salih-ai-one.vercel.app/"
     ],
     credentials: true
   })
