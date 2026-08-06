@@ -1,5 +1,4 @@
 import express from "express";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getSupabase } from "../config/supabase.js";
 
@@ -14,7 +13,6 @@ const router = express.Router();
 router.post(
 "/login",
 async(req,res)=>{
-
 
 try{
 
@@ -38,62 +36,81 @@ error:"email_and_password_required"
 
 
 
+const supabase = getSupabase();
+
+
+
 // =========================
-// GET USER
+// SUPABASE AUTH LOGIN
 // =========================
 
-const supabase =
-getSupabase();
 
+const {
+data:authData,
+error:authError
+
+}= await supabase.auth.signInWithPassword({
+
+email,
+
+password
+
+});
+
+
+
+if(authError || !authData.user){
+
+
+return res.status(401).json({
+
+error:"invalid_credentials"
+
+});
+
+
+}
+
+
+
+const authUser = authData.user;
+
+
+
+
+// =========================
+// GET CRM USER
+// =========================
 
 
 const {
 data:user,
-error
+error:userError
+
 }= await supabase
+
 .from("users")
+
 .select("*")
+
 .eq(
-"email",
-email
+
+"auth_user_id",
+
+authUser.id
+
 )
+
 .single();
 
 
 
-if(error || !user){
+if(userError || !user){
 
 
-return res.status(401).json({
+return res.status(404).json({
 
-error:"invalid_credentials"
-
-});
-
-
-}
-
-
-
-// =========================
-// CHECK PASSWORD
-// =========================
-
-
-const passwordMatch =
-await bcrypt.compare(
-password,
-user.password_hash
-);
-
-
-
-if(!passwordMatch){
-
-
-return res.status(401).json({
-
-error:"invalid_credentials"
+error:"user_profile_not_found"
 
 });
 
@@ -104,16 +121,17 @@ error:"invalid_credentials"
 
 
 // =========================
-// CREATE TOKEN
+// CREATE SALIH TOKEN
 // =========================
 
 
-const token =
-jwt.sign(
+const token = jwt.sign(
 
 {
 
 id:user.id,
+
+auth_user_id:user.auth_user_id,
 
 email:user.email,
 
@@ -137,10 +155,10 @@ expiresIn:"7d"
 
 
 
-
 return res.json({
 
 token,
+
 
 user:{
 
@@ -157,21 +175,22 @@ role:user.role
 });
 
 
-
-
 }
 
 catch(error){
 
 
 console.error(
+
 "AUTH LOGIN ERROR:",
+
 error
+
 );
 
 
 
-res.status(500).json({
+return res.status(500).json({
 
 error:"server_error"
 
@@ -182,7 +201,6 @@ error:"server_error"
 
 
 });
-
 
 
 
@@ -207,6 +225,7 @@ const auth =
 req.headers.authorization;
 
 
+
 if(!auth){
 
 return res.status(401).json({
@@ -219,6 +238,7 @@ error:"missing_token"
 
 
 
+
 const token =
 auth.split(" ")[1];
 
@@ -226,13 +246,16 @@ auth.split(" ")[1];
 
 const decoded =
 jwt.verify(
+
 token,
+
 process.env.JWT_SECRET
+
 );
 
 
 
-res.json({
+return res.json({
 
 user:decoded
 
@@ -245,7 +268,7 @@ user:decoded
 catch(error){
 
 
-res.status(401).json({
+return res.status(401).json({
 
 error:"invalid_token"
 
@@ -255,9 +278,7 @@ error:"invalid_token"
 }
 
 
-
 });
-
 
 
 
@@ -275,7 +296,7 @@ router.post(
 async(req,res)=>{
 
 
-res.json({
+return res.json({
 
 success:true
 
@@ -283,7 +304,6 @@ success:true
 
 
 });
-
 
 
 
