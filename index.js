@@ -62,6 +62,8 @@ import invitationRoutes
 from "./scr/routes/invitations.js";
 
 
+import authRoutes 
+from "./scr/routes/auth.js";
 
 
 // =========================
@@ -251,6 +253,15 @@ dashboardApiRoutes
 );
 
 
+
+// =========================
+// AUTH
+// =========================
+
+app.use(
+"/auth",
+authRoutes
+);
 
 
 
