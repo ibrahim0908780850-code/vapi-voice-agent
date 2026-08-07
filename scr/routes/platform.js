@@ -1,221 +1,479 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../config/supabase-admin.js";
+
 
 const router = express.Router();
 
 
-router.post("/create-company", async (req, res) => {
 
-  try {
+// =========================
+// PLATFORM AUTH
+// =========================
 
-    const {
-      request_id,
-      auth_user_id,
-      full_name,
-      email,
-      phone,
-      company_name
-    } = req.body;
+function platformAuth(req,res,next){
 
 
+try{
 
-    if (
-      !request_id ||
-      !auth_user_id ||
-      !company_name
-    ) {
 
-      return res.status(400).json({
-        error:"missing_required_fields"
-      });
+const auth =
+req.headers.authorization;
 
-    }
 
+if(!auth){
 
+return res.status(401).json({
 
-    // 1 - إنشاء الشركة
-
-    const {
-      data: tenant,
-      error: tenantError
-
-    } = await supabaseAdmin
-
-      .from("tenants")
-
-      .insert({
-
-        name: company_name
-
-      })
-
-      .select("id")
-
-      .single();
-
-
-
-    if (tenantError)
-      throw tenantError;
-
-
-
-
-    // 2 - إنشاء مالك الشركة
-
-    const {
-      error:userError
-
-    } = await supabaseAdmin
-
-      .from("users")
-
-      .insert({
-
-        auth_user_id,
-
-        tenant_id:tenant.id,
-
-        full_name,
-
-        email,
-
-        phone,
-
-        role:"owner",
-
-        is_platform_owner:false
-
-      });
-
-
-
-    if(userError)
-      throw userError;
-
-
-
-
-    // 3 - إعدادات الشركة
-
-
-    const {
-      error:settingsError
-
-    } = await supabaseAdmin
-
-      .from("company_settings")
-
-      .insert({
-
-        tenant_id:tenant.id,
-
-        company_name,
-
-        industry_type:"real_estate"
-
-      });
-
-
-
-    if(settingsError)
-      throw settingsError;
-
-
-
-
-    // 4 - إنشاء AI Agent
-
-
-    const {
-      error:agentError
-
-    } = await supabaseAdmin
-
-      .from("ai_agents")
-
-      .insert({
-
-        tenant_id:tenant.id,
-
-        name:"Salih AI Agent",
-
-        status:"active",
-
-        model:"gemini"
-
-      });
-
-
-
-    if(agentError)
-      throw agentError;
-
-
-
-
-    // 5 - تحديث الطلب
-
-
-    const {
-      error:requestError
-
-    } = await supabaseAdmin
-
-      .from("company_requests")
-
-      .update({
-
-        status:"approved"
-
-      })
-
-      .eq(
-        "id",
-        request_id
-      );
-
-
-
-    if(requestError)
-      throw requestError;
-
-
-
-
-    res.json({
-
-      success:true,
-
-      tenant_id:tenant.id
-
-    });
-
-
-
-  }
-
-
-  catch(error){
-
-
-    console.error(
-      "CREATE COMPANY ERROR:",
-      error
-    );
-
-
-    res.status(500).json({
-
-      error:error.message
-
-    });
-
-
-  }
-
+error:"missing_token"
 
 });
+
+}
+
+
+
+const token =
+auth.split(" ")[1];
+
+
+
+const decoded =
+jwt.verify(
+
+token,
+
+process.env.JWT_SECRET
+
+);
+
+
+
+if(
+decoded.role !== "platform_owner" &&
+decoded.is_platform_owner !== true
+){
+
+return res.status(403).json({
+
+error:"not_allowed"
+
+});
+
+}
+
+
+
+req.user = decoded;
+
+
+next();
+
+
+
+}
+
+catch(error){
+
+
+return res.status(401).json({
+
+error:"invalid_token"
+
+});
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+// =========================
+// APPROVE COMPANY REQUEST
+// =========================
+
+
+router.post(
+
+"/create-company",
+
+platformAuth,
+
+async(req,res)=>{
+
+
+try{
+
+
+const {
+
+request_id
+
+}=req.body;
+
+
+
+
+if(!request_id){
+
+
+return res.status(400).json({
+
+error:"request_id_required"
+
+});
+
+
+}
+
+
+
+
+
+// =========================
+// GET REQUEST
+// =========================
+
+
+const {
+
+data:request,
+
+error:requestError
+
+}= await supabaseAdmin
+
+.from("company_requests")
+
+.select("*")
+
+.eq(
+
+"id",
+
+request_id
+
+)
+
+.single();
+
+
+
+
+
+if(requestError || !request){
+
+
+return res.status(404).json({
+
+error:"request_not_found"
+
+});
+
+
+}
+
+
+
+
+
+if(request.status === "approved"){
+
+
+return res.status(400).json({
+
+error:"already_approved"
+
+});
+
+
+}
+
+
+
+
+
+
+
+// =========================
+// CREATE TENANT
+// =========================
+
+
+const {
+
+data:tenant,
+
+error:tenantError
+
+}= await supabaseAdmin
+
+.from("tenants")
+
+.insert({
+
+name:
+request.company_name,
+
+website:
+request.website || null,
+
+status:
+"active"
+
+})
+
+.select()
+
+.single();
+
+
+
+
+
+
+if(tenantError)
+throw tenantError;
+
+
+
+
+
+
+
+// =========================
+// CREATE COMPANY OWNER
+// =========================
+
+
+const {
+
+error:userError
+
+}= await supabaseAdmin
+
+.from("users")
+
+.update({
+
+tenant_id:
+tenant.id,
+
+role:
+"owner",
+
+is_platform_owner:false
+
+})
+
+.eq(
+
+"auth_user_id",
+
+request.auth_user_id
+
+);
+
+
+
+
+
+if(userError)
+throw userError;
+
+
+
+
+
+
+
+
+// =========================
+// COMPANY SETTINGS
+// =========================
+
+
+const {
+
+error:settingsError
+
+}= await supabaseAdmin
+
+.from("company_settings")
+
+.insert({
+
+tenant_id:
+tenant.id,
+
+company_name:
+request.company_name,
+
+industry_type:
+"real_estate"
+
+});
+
+
+
+
+
+if(settingsError)
+throw settingsError;
+
+
+
+
+
+
+
+
+// =========================
+// CREATE AI AGENT
+// =========================
+
+
+const {
+
+error:agentError
+
+}= await supabaseAdmin
+
+.from("ai_agents")
+
+.insert({
+
+tenant_id:
+tenant.id,
+
+name:
+"Salih AI Agent",
+
+status:
+"active",
+
+model:
+"gemini"
+
+});
+
+
+
+
+
+if(agentError)
+throw agentError;
+
+
+
+
+
+
+
+
+
+// =========================
+// UPDATE REQUEST
+// =========================
+
+
+const {
+
+error:updateError
+
+}= await supabaseAdmin
+
+.from("company_requests")
+
+.update({
+
+status:"approved",
+
+approved_by:
+
+req.user.id,
+
+approved_at:
+
+new Date()
+
+})
+
+.eq(
+
+"id",
+
+request_id
+
+);
+
+
+
+
+
+
+if(updateError)
+throw updateError;
+
+
+
+
+
+
+return res.json({
+
+success:true,
+
+message:
+"تم تفعيل الشركة بنجاح",
+
+tenant_id:
+tenant.id
+
+});
+
+
+
+
+
+}
+
+catch(error){
+
+
+console.error(
+
+"APPROVE COMPANY ERROR:",
+
+error
+
+);
+
+
+
+return res.status(500).json({
+
+error:"server_error",
+
+message:error.message
+
+});
+
+
+}
+
+
+}
+
+);
+
+
 
 
 export default router;
