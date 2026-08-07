@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import { getSupabase } from "../config/supabase.js";
+import { supabaseAdmin } from "../config/supabase-admin.js";
 
 
 const router = express.Router();
@@ -13,26 +13,18 @@ const router = express.Router();
 
 function authMiddleware(req,res,next){
 
-
 try{
 
-
-const auth =
-req.headers.authorization;
-
+const auth = req.headers.authorization;
 
 
 if(!auth){
 
-
 return res.status(401).json({
-
 error:"missing_token"
-
 });
 
 }
-
 
 
 
@@ -43,17 +35,13 @@ auth.split(" ")[1];
 
 const decoded =
 jwt.verify(
-
 token,
-
 process.env.JWT_SECRET
-
 );
 
 
 
 req.user = decoded;
-
 
 
 next();
@@ -81,19 +69,14 @@ error:"invalid_token"
 
 
 
-
-
 // =========================
 // CREATE COMPANY REQUEST
 // =========================
 
 
 router.post(
-
 "/request",
-
 authMiddleware,
-
 async(req,res)=>{
 
 
@@ -103,12 +86,11 @@ try{
 const {
 
 company_name,
-
 website,
-
 description,
-
-document_url
+document_url,
+phone,
+company_type
 
 }=req.body;
 
@@ -125,49 +107,80 @@ error:"company_name_required"
 
 });
 
+}
+
+
+
+const userId =
+req.user.auth_user_id;
+
+
+
+// =========================
+// CHECK USER COMPANY
+// =========================
+
+
+const {
+
+data:user
+
+}= await supabaseAdmin
+
+.from("users")
+
+.select(
+"tenant_id"
+)
+
+.eq(
+"auth_user_id",
+userId
+)
+
+.single();
+
+
+
+if(user?.tenant_id){
+
+
+return res.status(400).json({
+
+error:"already_has_company"
+
+});
+
 
 }
 
 
 
 
-const supabase =
-getSupabase();
-
-
-
-
-
 
 // =========================
-// CHECK EXISTING REQUEST
+// CHECK PENDING REQUEST
 // =========================
 
 
 const {
 
-data:existingRequest
+data:pending
 
-}= await supabase
+}= await supabaseAdmin
 
 .from("company_requests")
 
 .select("id,status")
 
 .eq(
-
 "auth_user_id",
-
-req.user.auth_user_id
-
+userId
 )
 
 .eq(
-
 "status",
-
 "pending"
-
 )
 
 .maybeSingle();
@@ -176,8 +189,7 @@ req.user.auth_user_id
 
 
 
-
-if(existingRequest){
+if(pending){
 
 
 return res.status(400).json({
@@ -193,8 +205,6 @@ error:"request_already_pending"
 
 
 
-
-
 // =========================
 // CREATE REQUEST
 // =========================
@@ -203,52 +213,49 @@ error:"request_already_pending"
 const {
 
 data,
-
 error
 
-}= await supabase
+}= await supabaseAdmin
 
 .from("company_requests")
 
 .insert({
 
-
-auth_user_id:
-
-req.user.auth_user_id,
+auth_user_id:userId,
 
 
 full_name:
-
 req.user.email,
 
 
 email:
-
 req.user.email,
+
+
+phone:
+phone || null,
 
 
 company_name,
 
 
-website:
+company_type:
+company_type || "general",
 
+
+website:
 website || null,
 
 
 description:
-
 description || null,
 
 
 document_url:
-
 document_url || null,
 
 
-status:
-
-"pending"
+status:"pending"
 
 
 })
@@ -266,13 +273,9 @@ if(error){
 
 
 console.error(
-
-"COMPANY REQUEST ERROR:",
-
+"CREATE COMPANY REQUEST ERROR:",
 error
-
 );
-
 
 
 return res.status(500).json({
@@ -295,8 +298,7 @@ success:true,
 
 
 message:
-
-"تم إرسال طلب الشركة وسيتم مراجعته خلال 24 ساعة",
+"تم إرسال طلب تفعيل الشركة بنجاح",
 
 
 request:data
@@ -310,12 +312,13 @@ request:data
 
 }
 
+
 catch(error){
 
 
 console.error(
 
-"CREATE COMPANY ERROR:",
+"COMPANY REQUEST ERROR:",
 
 error
 
@@ -333,10 +336,7 @@ error:"server_error"
 }
 
 
-}
-
-);
-
+});
 
 
 
