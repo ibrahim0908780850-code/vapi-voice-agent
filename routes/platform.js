@@ -6,111 +6,81 @@ import { getSupabase } from "../config/supabase.js";
 const router = express.Router();
 
 
-
 // =========================
-// AUTH + PLATFORM OWNER
+// PLATFORM AUTH
 // =========================
-
 
 function platformAuth(req,res,next){
 
-
 try{
-
 
 const auth =
 req.headers.authorization;
 
 
-
 if(!auth){
 
 return res.status(401).json({
-
 error:"missing_token"
-
 });
 
 }
-
 
 
 const token =
 auth.split(" ")[1];
 
 
-
 const decoded =
 jwt.verify(
-
 token,
-
 process.env.JWT_SECRET
-
 );
 
 
 
 if(
-decoded.role !== "platform_owner"
-&&
+decoded.role !== "platform_owner" &&
 decoded.is_platform_owner !== true
 ){
 
-
 return res.status(403).json({
-
-error:"not_platform_owner"
-
+error:"platform_only"
 });
 
-
 }
-
 
 
 req.user = decoded;
 
 
-
 next();
 
 
-
 }
 
-catch(error){
-
+catch{
 
 return res.status(401).json({
-
 error:"invalid_token"
-
 });
 
-
 }
 
-
 }
-
-
 
 
 
 
 
 // =========================
-// GET COMPANY REQUESTS
+// GET REQUESTS
 // =========================
 
 
 router.get(
-
 "/company-requests",
-
 platformAuth,
-
 async(req,res)=>{
 
 
@@ -122,39 +92,51 @@ getSupabase();
 
 
 
-
 const {
-
 data,
-
 error
-
-}=await supabase
+}= await supabase
 
 .from("company_requests")
 
-.select("*")
+.select(`
+*
+`)
 
 .order(
-
 "created_at",
-
 {
-
 ascending:false
-
 }
-
 );
 
 
 
+if(error)
+throw error;
 
 
-if(error){
+
+res.json({
+
+success:true,
+
+requests:data || []
+
+});
 
 
-return res.status(500).json({
+}
+
+catch(error){
+
+
+console.error(
+error
+);
+
+
+res.status(500).json({
 
 error:"fetch_failed"
 
@@ -164,45 +146,7 @@ error:"fetch_failed"
 }
 
 
-
-
-return res.json({
-
-success:true,
-
-requests:data
-
 });
-
-
-
-}
-
-catch(error){
-
-
-console.error(
-"GET REQUESTS ERROR",
-error
-);
-
-
-
-return res.status(500).json({
-
-error:"server_error"
-
-});
-
-
-}
-
-
-}
-
-);
-
-
 
 
 
@@ -211,16 +155,13 @@ error:"server_error"
 
 
 // =========================
-// APPROVE COMPANY
+// APPROVE
 // =========================
 
 
 router.patch(
-
 "/company-requests/:id/approve",
-
 platformAuth,
-
 async(req,res)=>{
 
 
@@ -238,14 +179,11 @@ getSupabase();
 
 
 
-// جلب الطلب
+// get request
 
 const {
-
 data:request,
-
-error:getError
-
+error
 }=await supabase
 
 .from("company_requests")
@@ -261,10 +199,7 @@ id
 
 
 
-
-
-if(getError || !request){
-
+if(error || !request){
 
 return res.status(404).json({
 
@@ -272,6 +207,19 @@ error:"request_not_found"
 
 });
 
+}
+
+
+
+
+
+if(request.status==="approved"){
+
+return res.status(400).json({
+
+error:"already_approved"
+
+});
 
 }
 
@@ -280,15 +228,11 @@ error:"request_not_found"
 
 
 
-// إنشاء Tenant
-
+// create tenant
 
 const {
-
 data:tenant,
-
 error:tenantError
-
 }=await supabase
 
 .from("tenants")
@@ -314,22 +258,21 @@ status:
 
 
 
-if(tenantError){
-
+if(tenantError)
 throw tenantError;
 
-}
 
 
 
 
 
+// create/update user
 
 
-// ربط المستخدم بالشركة
+const {
+error:userError
 
-
-await supabase
+}=await supabase
 
 .from("users")
 
@@ -344,50 +287,73 @@ role:
 })
 
 .eq(
-
 "auth_user_id",
-
 request.auth_user_id
-
 );
 
 
 
 
 
+if(userError)
+throw userError;
 
-// تحديث الطلب
 
 
-await supabase
+
+
+
+
+// update request
+
+
+const {
+error:updateError
+
+}=await supabase
 
 .from("company_requests")
 
 .update({
 
-status:"approved"
+status:"approved",
+
+tenant_id:
+tenant.id,
+
+approved_by:
+req.user.id,
+
+approved_at:
+new Date()
 
 })
 
 .eq(
-
 "id",
-
 id
-
 );
 
 
 
 
+if(updateError)
+throw updateError;
 
-return res.json({
+
+
+
+
+
+res.json({
 
 success:true,
 
 message:
+"تم تفعيل الشركة بنجاح",
 
-"تم تفعيل الشركة"
+tenant_id:
+tenant.id
 
 });
 
@@ -399,16 +365,13 @@ catch(error){
 
 
 console.error(
-
-"APPROVE ERROR",
-
+"APPROVE COMPANY ERROR",
 error
-
 );
 
 
 
-return res.status(500).json({
+res.status(500).json({
 
 error:"approve_failed"
 
@@ -418,9 +381,7 @@ error:"approve_failed"
 }
 
 
-}
-
-);
+});
 
 
 
@@ -431,83 +392,62 @@ error:"approve_failed"
 
 
 // =========================
-// REJECT COMPANY
+// REJECT
 // =========================
 
 
 router.patch(
-
 "/company-requests/:id/reject",
-
 platformAuth,
-
 async(req,res)=>{
 
 
 try{
 
 
-const id =
-req.params.id;
-
-
 const supabase =
 getSupabase();
 
 
-
-
-
 const {
-
 error
-
 }=await supabase
 
 .from("company_requests")
 
 .update({
 
-status:"rejected"
+status:"rejected",
+
+rejected_at:
+new Date(),
+
+rejected_by:
+req.user.id
 
 })
 
 .eq(
-
 "id",
-
-id
-
+req.params.id
 );
 
 
 
 
-
-
-if(error){
-
-
-return res.status(500).json({
-
-error:"reject_failed"
-
-});
-
-}
+if(error)
+throw error;
 
 
 
-return res.json({
+res.json({
 
 success:true,
 
 message:
-
 "تم رفض الطلب"
 
 });
-
 
 
 }
@@ -515,9 +455,9 @@ message:
 catch(error){
 
 
-return res.status(500).json({
+res.status(500).json({
 
-error:"server_error"
+error:"reject_failed"
 
 });
 
@@ -525,10 +465,7 @@ error:"server_error"
 }
 
 
-}
-
-);
-
+});
 
 
 
