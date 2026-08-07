@@ -58,6 +58,10 @@ import crmRoutes
 from "./scr/routes/crm.js";
 
 
+import companyRoutes from "./routes/company.js";
+
+
+
 import invitationRoutes 
 from "./scr/routes/invitations.js";
 
@@ -342,6 +346,10 @@ crmRoutes
 );
 
 
+app.use(
+"/company",
+companyRoutes
+);
 
 
 
