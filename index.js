@@ -70,6 +70,13 @@ import authRoutes
 from "./scr/routes/auth.js";
 
 
+import companyUploadRouter from "./routes/companyUpload.js";
+
+
+
+
+
+
 // =========================
 // PLATFORM OWNER
 // =========================
@@ -352,6 +359,11 @@ companyRoutes
 );
 
 
+
+app.use(
+"/company",
+companyUploadRouter
+);
 
 
 
