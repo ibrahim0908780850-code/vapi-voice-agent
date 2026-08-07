@@ -58,7 +58,7 @@ import crmRoutes
 from "./scr/routes/crm.js";
 
 
-import companyRoutes from "./routes/company.js";
+import companyRoutes from "./server/routes/company.js";
 
 
 
