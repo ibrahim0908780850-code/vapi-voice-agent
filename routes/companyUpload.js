@@ -96,7 +96,6 @@ process.env.JWT_SECRET
 next();
 
 
-
 }
 
 catch(error){
@@ -167,10 +166,10 @@ file.originalname
 
 
 
+
 const filePath =
 
 `${req.user.auth_user_id}/${Date.now()}-${safeName}`;
-
 
 
 
@@ -212,7 +211,6 @@ upsert:false
 
 
 
-
 if(error){
 
 
@@ -238,61 +236,12 @@ error:"upload_failed"
 
 
 
-
-// إنشاء رابط مؤقت للملف الخاص
-
-const {
-
-data:urlData,
-
-error:urlError
-
-}=await supabaseAdmin
-
-.storage
-
-.from(
-"company-documents"
-)
-
-.createSignedUrl(
-
-data.path,
-
-60 * 60 * 24
-
-);
-
-
-
-
-
-
-if(urlError){
-
-
-return res.status(500).json({
-
-error:"url_generation_failed"
-
-});
-
-
-}
-
-
-
-
-
-
+// نعيد مسار الملف فقط
+// بدون رابط مباشر
 
 return res.json({
 
 success:true,
-
-
-url:urlData.signedUrl,
-
 
 path:data.path
 
@@ -301,8 +250,8 @@ path:data.path
 
 
 
-}
 
+}
 
 
 catch(error){
@@ -332,9 +281,6 @@ error:error.message || "server_error"
 }
 
 );
-
-
-
 
 
 
