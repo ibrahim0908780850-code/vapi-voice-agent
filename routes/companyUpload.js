@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import jwt from "jsonwebtoken";
-import { supabaseAdmin } from "../config/supabase-admin.js";
+import { supabaseAdmin } from "../../scr/config/supabase-admin.js";
 
 const router = express.Router();
 
