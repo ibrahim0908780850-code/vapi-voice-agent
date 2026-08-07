@@ -1,6 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import { supabaseAdmin } from "../../scr/config/supabase-admin.js";
+import { supabaseAdmin } from "../../config/supabase-admin.js";
 
 
 const router = express.Router();
