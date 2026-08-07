@@ -3,17 +3,49 @@ import multer from "multer";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../config/supabase-admin.js";
 
-
 const router = express.Router();
 
 
-// تخزين مؤقت في الذاكرة
+// =========================
+// MULTER CONFIG
+// =========================
+
 const upload = multer({
 
   storage: multer.memoryStorage(),
 
-  limits:{
-    fileSize:10 * 1024 * 1024
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  },
+
+  fileFilter(req, file, cb){
+
+    const allowedTypes = [
+
+      "application/pdf",
+
+      "application/msword",
+
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    ];
+
+
+    if(
+      allowedTypes.includes(file.mimetype)
+    ){
+
+      cb(null,true);
+
+    }else{
+
+      cb(
+        new Error("invalid_file_type"),
+        false
+      );
+
+    }
+
   }
 
 });
@@ -29,6 +61,7 @@ function authMiddleware(req,res,next){
 
 try{
 
+
 const auth =
 req.headers.authorization;
 
@@ -36,7 +69,9 @@ req.headers.authorization;
 if(!auth){
 
 return res.status(401).json({
+
 error:"missing_token"
+
 });
 
 }
@@ -47,11 +82,13 @@ const token =
 auth.split(" ")[1];
 
 
-
 req.user =
 jwt.verify(
+
 token,
+
 process.env.JWT_SECRET
+
 );
 
 
@@ -65,7 +102,9 @@ next();
 catch(error){
 
 return res.status(401).json({
+
 error:"invalid_token"
+
 });
 
 }
@@ -77,10 +116,8 @@ error:"invalid_token"
 
 
 
-
-
 // =========================
-// UPLOAD COMPANY DOCUMENT
+// UPLOAD DOCUMENT
 // =========================
 
 
@@ -101,17 +138,13 @@ try{
 
 if(!req.file){
 
-
 return res.status(400).json({
 
 error:"file_required"
 
 });
 
-
 }
-
-
 
 
 
@@ -120,9 +153,23 @@ req.file;
 
 
 
-const fileName =
+const safeName =
 
-`${Date.now()}-${file.originalname.replace(/\s/g,"-")}`;
+file.originalname
+
+.toLowerCase()
+
+.replace(
+/[^a-z0-9.]/g,
+"-"
+);
+
+
+
+
+const filePath =
+
+`${req.user.auth_user_id}/${Date.now()}-${safeName}`;
 
 
 
@@ -140,11 +187,13 @@ error
 
 .storage
 
-.from("company-documents")
+.from(
+"company-documents"
+)
 
 .upload(
 
-fileName,
+filePath,
 
 file.buffer,
 
@@ -163,12 +212,16 @@ upsert:false
 
 
 
+
 if(error){
 
 
 console.error(
+
 "STORAGE ERROR:",
+
 error
+
 );
 
 
@@ -186,21 +239,46 @@ error:"upload_failed"
 
 
 
+// إنشاء رابط مؤقت للملف الخاص
+
 const {
 
-data:urlData
+data:urlData,
 
-}=supabaseAdmin
+error:urlError
+
+}=await supabaseAdmin
 
 .storage
 
-.from("company-documents")
+.from(
+"company-documents"
+)
 
-.getPublicUrl(
+.createSignedUrl(
 
-data.path
+data.path,
+
+60 * 60 * 24
 
 );
+
+
+
+
+
+
+if(urlError){
+
+
+return res.status(500).json({
+
+error:"url_generation_failed"
+
+});
+
+
+}
 
 
 
@@ -212,29 +290,37 @@ return res.json({
 
 success:true,
 
-url:urlData.publicUrl
+
+url:urlData.signedUrl,
+
+
+path:data.path
 
 });
 
 
 
 
-
 }
+
+
 
 catch(error){
 
 
 console.error(
+
 "UPLOAD DOCUMENT ERROR:",
+
 error
+
 );
 
 
 
 return res.status(500).json({
 
-error:"server_error"
+error:error.message || "server_error"
 
 });
 
@@ -246,6 +332,9 @@ error:"server_error"
 }
 
 );
+
+
+
 
 
 
