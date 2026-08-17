@@ -4,549 +4,166 @@ import { getSupabase } from "../config/supabase.js";
 
 const router = express.Router();
 
-
-// =========================
-// LOGIN
-// =========================
-
 router.post("/login", async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+
+  if (!email || !password) {
+    return res.status(400).json({
+      error: "email_and_password_required",
+      message: "أدخل البريد الإلكتروني وكلمة المرور"
+    });
+  }
 
   try {
-
-    const { email, password } = req.body;
-
-
-    if (!email || !password) {
-
-      return res.status(400).json({
-        error: "email_and_password_required"
-      });
-
-    }
-
-
     const supabase = getSupabase();
 
-
-
-    // =========================
-    // SUPABASE AUTH
-    // =========================
-
-    const {
-      data: authData,
-      error: authError
-
-    } = await supabase.auth.signInWithPassword({
-
-      email,
-      password
-
-    });
-
-
-
-    if (authError || !authData.user) {
-
-      return res.status(401).json({
-
-        error:"invalid_credentials"
-
-      });
-
-    }
-
-
-
-    const authUser = authData.user;
-
-
-
-
-    // =========================
-    // GET CRM USER
-    // =========================
-
-
-    const {
-
-      data:user,
-      error:userError
-
-    } = await supabase
-
-    .from("users")
-
-    .select("*")
-
-    .eq(
-      "auth_user_id",
-      authUser.id
-    )
-
-    .single();
-
-
-
-    if(userError || !user){
-
-      return res.status(404).json({
-
-        error:"user_profile_not_found"
-
-      });
-
-    }
-
-
-
-
-    // =========================
-    // DETERMINE ACCESS
-    // =========================
-
-
-    let next_step = "create_company";
-
-    let message = "";
-
-
-
-
-    // =========================
-    // PLATFORM OWNER
-    // =========================
-
-
-    if(user.is_platform_owner === true){
-
-
-      next_step = "platform";
-
-
-      message =
-      "مرحبا بك مالك المنصة";
-
-
-    }
-
-
-
-
-    // =========================
-    // USER HAS TENANT
-    // =========================
-
-
-    else if(user.tenant_id){
-
-
-      const {
-
-        data:tenant
-
-      } = await supabase
-
-
-      .from("tenants")
-
-
-      .select(
-
-        "status"
-
-      )
-
-
-      .eq(
-
-        "id",
-        user.tenant_id
-
-      )
-
-
-      .single();
-
-
-
-
-      if(
-        tenant &&
-        tenant.status === "active"
-      ){
-
-
-        next_step="dashboard";
-
-
-        message =
-        "تم الدخول إلى لوحة الشركة";
-
-
-      }
-
-
-      else{
-
-
-        next_step="pending";
-
-
-        message =
-        "الشركة قيد التفعيل";
-
-
-      }
-
-
-
-    }
-
-
-
-
-    // =========================
-    // NO COMPANY
-    // =========================
-
-
-    else{
-
-
-      const {
-
-        data:request
-
-      } = await supabase
-
-
-      .from("company_requests")
-
-
-      .select("*")
-
-
-      .eq(
-
-        "auth_user_id",
-        authUser.id
-
-      )
-
-
-      .order(
-
-        "created_at",
-
-        {
-          ascending:false
-        }
-
-      )
-
-
-      .limit(1)
-
-
+    // يفرّق النظام بين الحساب غير المسجل وكلمة المرور غير الصحيحة كما يتطلب تدفق المنتج.
+    const { data: profileByEmail, error: profileLookupError } = await supabase
+      .from("users")
+      .select("id, auth_user_id")
+      .eq("email", email)
       .maybeSingle();
 
-
-
-
-      if(!request){
-
-
-        next_step="create_company";
-
-
-        message =
-        "يرجى إضافة بيانات الشركة";
-
-
-      }
-
-
-
-      else if(
-        request.status === "pending"
-      ){
-
-
-        next_step="pending";
-
-
-        message =
-        "طلب الشركة قيد المراجعة";
-
-
-      }
-
-
-
-
-      else if(
-        request.status === "approved"
-      ){
-
-
-        next_step="pending_activation";
-
-
-        message =
-        "تمت الموافقة ويتم تجهيز الشركة";
-
-
-      }
-
-
-
-
-      else{
-
-
-        next_step="create_company";
-
-
-        message =
-        "يمكنك إرسال طلب شركة جديد";
-
-
-      }
-
-
-
+    if (profileLookupError) throw profileLookupError;
+    if (!profileByEmail) {
+      return res.status(404).json({
+        error: "account_not_found",
+        message: "الحساب غير موجود. أنشئ حساب شركتك أولاً."
+      });
     }
 
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
+    if (authError || !authData.user) {
+      return res.status(401).json({
+        error: "invalid_credentials",
+        message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+      });
+    }
 
+    const authUser = authData.user;
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("auth_user_id", authUser.id)
+      .maybeSingle();
 
+    if (userError) throw userError;
+    if (!user) {
+      return res.status(404).json({
+        error: "account_not_found",
+        message: "الحساب غير مكتمل. تواصل مع إدارة المنصة."
+      });
+    }
 
+    let nextStep = "create_company";
+    let message = "يمكنك إضافة بيانات الشركة";
+    let companyStatus = "none";
 
+    if (user.is_platform_owner === true || user.role === "platform_owner") {
+      nextStep = "platform";
+      message = "مرحباً بك في لوحة إدارة المنصة";
+      companyStatus = "active";
+    } else if (user.tenant_id) {
+      const { data: tenant, error: tenantError } = await supabase
+        .from("tenants")
+        .select("status")
+        .eq("id", user.tenant_id)
+        .maybeSingle();
 
-    // =========================
-    // CREATE JWT
-    // =========================
+      if (tenantError) throw tenantError;
 
+      if (tenant?.status === "active") {
+        nextStep = "dashboard";
+        message = "تم تسجيل الدخول إلى لوحة الشركة";
+        companyStatus = "active";
+      } else {
+        nextStep = "pending";
+        message = "الشركة قيد التفعيل";
+        companyStatus = "pending";
+      }
+    } else {
+      const { data: request, error: requestError } = await supabase
+        .from("company_requests")
+        .select("status")
+        .eq("auth_user_id", authUser.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (requestError) throw requestError;
+
+      if (request?.status === "pending" || request?.status === "approved") {
+        nextStep = "pending";
+        message = request.status === "approved"
+          ? "تمت الموافقة ويجري تجهيز الشركة"
+          : "طلب الشركة قيد المراجعة";
+        companyStatus = "pending";
+      } else if (request?.status === "rejected") {
+        nextStep = "create_company";
+        message = "يمكنك مراجعة البيانات وإرسال طلب شركة جديد";
+        companyStatus = "rejected";
+      }
+    }
 
     const token = jwt.sign(
-
-
       {
-
-        id:user.id,
-
-        auth_user_id:user.auth_user_id,
-
-        email:user.email,
-
-        tenant_id:user.tenant_id,
-
-        role:user.role,
-
-        is_platform_owner:user.is_platform_owner
-
-
+        id: user.id,
+        auth_user_id: user.auth_user_id,
+        email: user.email,
+        tenant_id: user.tenant_id,
+        role: user.role,
+        is_platform_owner: user.is_platform_owner,
+        company_status: companyStatus
       },
-
-
       process.env.JWT_SECRET,
-
-
-      {
-
-        expiresIn:"7d"
-
-      }
-
-
+      { expiresIn: "7d" }
     );
-
-
-
-
-
 
     return res.json({
-
-
-      success:true,
-
-
+      success: true,
       token,
-
-
-      next_step,
-
-
+      next_step: nextStep,
       message,
-
-
-
-      user:{
-
-
-        id:user.id,
-
-
-        email:user.email,
-
-
-        tenant_id:user.tenant_id,
-
-
-        role:user.role,
-
-
-        is_platform_owner:user.is_platform_owner
-
-
+      user: {
+        id: user.id,
+        email: user.email,
+        tenant_id: user.tenant_id,
+        role: user.role,
+        is_platform_owner: user.is_platform_owner,
+        company_status: companyStatus
       }
-
-
-
     });
-
-
-
-
-
-  }
-
-
-  catch(error){
-
-
-    console.error(
-
-      "AUTH LOGIN ERROR:",
-
-      error
-
-    );
-
-
-
+  } catch (error) {
+    console.error("AUTH LOGIN ERROR:", error);
     return res.status(500).json({
-
-
-      error:"server_error",
-
-
-      message:error.message
-
-
+      error: "server_error",
+      message: "تعذر تسجيل الدخول حالياً"
     });
-
-
   }
-
-
 });
 
+router.get("/me", async (req, res) => {
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) {
+      return res.status(401).json({ error: "missing_token" });
+    }
 
-
-
-
-
-
-// =========================
-// CURRENT USER
-// =========================
-
-
-router.get("/me", async(req,res)=>{
-
-
-try{
-
-
-const auth =
-req.headers.authorization;
-
-
-
-if(!auth){
-
-
-return res.status(401).json({
-
-error:"missing_token"
-
+    const token = authorization.split(" ")[1];
+    const user = jwt.verify(token, process.env.JWT_SECRET);
+    return res.json({ user });
+  } catch {
+    return res.status(401).json({ error: "invalid_token" });
+  }
 });
 
-
-}
-
-
-
-const token =
-auth.split(" ")[1];
-
-
-
-const decoded =
-jwt.verify(
-
-token,
-
-process.env.JWT_SECRET
-
-);
-
-
-
-return res.json({
-
-user:decoded
-
+router.post("/logout", (_req, res) => {
+  return res.json({ success: true });
 });
-
-
-
-}
-
-catch(error){
-
-
-return res.status(401).json({
-
-error:"invalid_token"
-
-});
-
-
-}
-
-
-
-});
-
-
-
-
-
-
-
-// =========================
-// LOGOUT
-// =========================
-
-
-router.post("/logout",(req,res)=>{
-
-
-return res.json({
-
-success:true
-
-});
-
-
-});
-
-
-
-
 
 export default router;
