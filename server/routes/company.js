@@ -118,12 +118,14 @@ router.post("/register", async (req, res) => {
     const authUserId = authData.user.id;
 
     try {
-      const { error: profileError } = await supabaseAdmin.from("users").insert({
+      // قد ينشئ مشغل Supabase ملف المستخدم تلقائياً عند إنشاء حساب المصادقة؛
+      // لذلك نستخدم upsert لتجنب خطأ القيد الفريد في الحالتين.
+      const { error: profileError } = await supabaseAdmin.from("users").upsert({
         auth_user_id: authUserId,
         email: payload.email,
         role: "owner",
         tenant_id: null
-      });
+      }, { onConflict: "auth_user_id" });
 
       if (profileError) throw profileError;
 
@@ -140,9 +142,14 @@ router.post("/register", async (req, res) => {
     }
   } catch (error) {
     console.error("COMPANY REGISTRATION ERROR:", error);
+    const code = error?.code || "registration_failed";
+    const details = String(error?.message || "");
+    const message = /column|schema|relation/i.test(details)
+      ? "تعذر تجهيز نموذج طلب الشركة. تواصل مع إدارة المنصة لتحديث إعدادات البيانات."
+      : "تعذر إنشاء حساب الشركة حالياً. يرجى المحاولة مرة أخرى.";
     return res.status(500).json({
-      error: "registration_failed",
-      message: "تعذر إنشاء حساب الشركة حالياً"
+      error: code,
+      message
     });
   }
 });
