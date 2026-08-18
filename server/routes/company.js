@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../../scr/config/supabase-admin.js";
+import { registrationFailure } from "../lib/registrationFailure.js";
 
 const router = express.Router();
 
@@ -142,14 +143,10 @@ router.post("/register", async (req, res) => {
     }
   } catch (error) {
     console.error("COMPANY REGISTRATION ERROR:", error);
-    const code = error?.code || "registration_failed";
-    const details = String(error?.message || "");
-    const message = /column|schema|relation/i.test(details)
-      ? "تعذر تجهيز نموذج طلب الشركة. تواصل مع إدارة المنصة لتحديث إعدادات البيانات."
-      : "تعذر إنشاء حساب الشركة حالياً. يرجى المحاولة مرة أخرى.";
-    return res.status(500).json({
-      error: code,
-      message
+    const failure = registrationFailure(error);
+    return res.status(failure.status).json({
+      error: failure.error,
+      message: failure.message
     });
   }
 });
