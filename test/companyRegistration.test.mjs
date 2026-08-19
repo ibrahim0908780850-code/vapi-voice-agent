@@ -13,6 +13,7 @@ test("completes a valid company registration through auth, profile, and activati
         select() { return { eq() { return { async maybeSingle() { return { data: null, error: null }; } }; } }; },
         async upsert(values, options) { calls.push(["upsert", values, options]); return { error: null }; }
       };
+      if (table === "tenants") return { insert(values) { calls.push(["insertTenant", values]); return { select() { return { async single() { return { data: { id: "tenant-1", status: "pending" }, error: null }; } }; } }; } };
       return { insert(values) { calls.push(["insertRequest", values]); return { select() { return { async single() { return { data: { id: "request-1", status: "pending" }, error: null }; } }; } }; } };
     }
   };
@@ -20,7 +21,9 @@ test("completes a valid company registration through auth, profile, and activati
   const result = await registerCompanyAccount(client, payload);
   assert.deepEqual(result, { kind: "success", request: { id: "request-1", status: "pending" } });
   assert.equal(calls[0][0], "createUser");
+  assert.deepEqual(calls.find(([name]) => name === "insertTenant")[1], { name: "نمو تجريبي", status: "pending" });
   assert.equal(calls.find(([name]) => name === "upsert")[1].auth_user_id, "auth-1");
+  assert.equal(calls.find(([name]) => name === "upsert")[1].tenant_id, "tenant-1");
   assert.equal(calls.find(([name]) => name === "insertRequest")[1].company_name, "نمو تجريبي");
   assert.equal(calls.some(([name]) => name === "deleteUser"), false);
 });

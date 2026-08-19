@@ -37,6 +37,20 @@ export async function createCompanyRequest(client, { authUserId, payload }) {
   return data;
 }
 
+export async function createPendingCompanyTenant(client, payload) {
+  const { data, error } = await client
+    .from("tenants")
+    .insert({
+      name: payload.companyName,
+      status: "pending"
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function registerCompanyAccount(client, payload) {
   const { data: existingUser, error: existingUserError } = await client
     .from("users")
@@ -57,11 +71,16 @@ export async function registerCompanyAccount(client, payload) {
   if (authError || !authData.user) return { kind: "auth_error", error: authError };
 
   const authUserId = authData.user.id;
+  let pendingTenant = null;
   try {
-    await upsertCompanyOwnerProfile(client, authUserId, payload.email);
+    pendingTenant = await createPendingCompanyTenant(client, payload);
+    await upsertCompanyOwnerProfile(client, authUserId, payload.email, pendingTenant.id);
     const request = await createCompanyRequest(client, { authUserId, payload });
     return { kind: "success", request };
   } catch (error) {
+    if (pendingTenant?.id) {
+      await client.from("tenants").delete().eq("id", pendingTenant.id).catch(() => undefined);
+    }
     await client.auth.admin.deleteUser(authUserId).catch(() => undefined);
     throw error;
   }

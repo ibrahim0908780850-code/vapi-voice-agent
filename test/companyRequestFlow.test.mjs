@@ -26,6 +26,14 @@ test("makes a submitted company request available to the platform request list",
         };
       }
 
+      if (table === "tenants") {
+        return {
+          insert(values) {
+            return { select() { return { async single() { return { data: { id: "pending-tenant", ...values }, error: null }; } }; } };
+          }
+        };
+      }
+
       assert.equal(table, "company_requests");
       return {
         insert(values) {

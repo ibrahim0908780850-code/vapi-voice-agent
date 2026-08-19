@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../config/supabase-admin.js";
 import { listCompanyRequests } from "../../server/lib/companyRequests.js";
+import { activateCompanyTenant } from "../../server/lib/companyActivation.js";
 
 const router = express.Router();
 
@@ -49,12 +50,7 @@ router.post("/create-company", platformAuth, async (req, res) => {
     if (requestError || !request) return res.status(404).json({ error: "request_not_found" });
     if (request.status === "approved") return res.status(400).json({ error: "already_approved" });
 
-    const { data: tenant, error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .insert({ name: request.company_name, website: request.website || null, status: "active" })
-      .select()
-      .single();
-    if (tenantError) throw tenantError;
+    const tenant = await activateCompanyTenant(supabaseAdmin, request);
 
     const { error: userError } = await supabaseAdmin
       .from("users")

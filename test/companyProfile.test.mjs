@@ -16,9 +16,9 @@ test("prepares an owner profile for a valid registration without duplicate inser
     }
   };
 
-  await upsertCompanyOwnerProfile(client, "auth-user-id", "owner@example.com");
+  await upsertCompanyOwnerProfile(client, "auth-user-id", "owner@example.com", "pending-tenant-id");
   assert.deepEqual(calls, [{
-    values: { auth_user_id: "auth-user-id", email: "owner@example.com", role: "owner" },
+    values: { auth_user_id: "auth-user-id", email: "owner@example.com", role: "owner", tenant_id: "pending-tenant-id" },
     options: { onConflict: "auth_user_id" }
   }]);
 });
