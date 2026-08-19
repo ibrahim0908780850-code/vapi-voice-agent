@@ -2,7 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../../scr/config/supabase-admin.js";
 import { registrationFailure } from "../lib/registrationFailure.js";
-import { upsertCompanyOwnerProfile } from "../lib/companyProfile.js";
+import { createCompanyRequest, registerCompanyAccount } from "../lib/companyRegistration.js";
 
 const router = express.Router();
 
@@ -51,28 +51,6 @@ function validateRegistration(payload) {
   return null;
 }
 
-async function createCompanyRequest({ authUserId, payload }) {
-  const { data, error } = await supabaseAdmin
-    .from("company_requests")
-    .insert({
-      auth_user_id: authUserId,
-      full_name: payload.fullName || payload.email,
-      email: payload.email,
-      phone: payload.phone,
-      company_name: payload.companyName,
-      company_type: payload.companyType,
-      website: payload.website,
-      description: payload.description,
-      document_url: payload.documentUrl,
-      status: "pending"
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
 // التسجيل العام: ينشئ حساب المصادقة وملف المستخدم وطلب التفعيل في خطوة واحدة.
 router.post("/register", async (req, res) => {
   const payload = readCompanyPayload(req.body);
@@ -86,55 +64,30 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-    const { data: existingUser, error: existingUserError } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .eq("email", payload.email)
-      .maybeSingle();
-
-    if (existingUserError) throw existingUserError;
-    if (existingUser) {
+    const result = await registerCompanyAccount(supabaseAdmin, payload);
+    if (result.kind === "existing") {
       return res.status(409).json({
         error: "account_already_exists",
         message: "يوجد حساب مسجل بهذا البريد الإلكتروني. سجّل الدخول للمتابعة."
       });
     }
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: payload.email,
-      password: payload.password,
-      email_confirm: true,
-      user_metadata: { full_name: payload.fullName }
-    });
-
-    if (authError || !authData.user) {
-      const alreadyExists = /already|registered|exists/i.test(authError?.message || "");
+    if (result.kind === "auth_error") {
+      const alreadyExists = /already|registered|exists/i.test(result.error?.message || "");
       return res.status(alreadyExists ? 409 : 400).json({
         error: alreadyExists ? "account_already_exists" : "account_creation_failed",
         message: alreadyExists
           ? "يوجد حساب مسجل بهذا البريد الإلكتروني. سجّل الدخول للمتابعة."
-          : authError?.message || "تعذر إنشاء حساب المصادقة"
+          : result.error?.message || "تعذر إنشاء حساب المصادقة"
       });
     }
 
-    const authUserId = authData.user.id;
-
-    try {
-      // قد ينشئ مشغل Supabase ملف المستخدم تلقائياً عند إنشاء حساب المصادقة؛
-      // لذلك نستخدم upsert لتجنب خطأ القيد الفريد في الحالتين.
-      await upsertCompanyOwnerProfile(supabaseAdmin, authUserId, payload.email);
-
-      const request = await createCompanyRequest({ authUserId, payload });
-      return res.status(201).json({
-        success: true,
-        message: "تم إنشاء الحساب وإرسال طلب تفعيل الشركة للمراجعة",
-        request_id: request.id,
-        status: request.status
-      });
-    } catch (error) {
-      await supabaseAdmin.auth.admin.deleteUser(authUserId).catch(() => undefined);
-      throw error;
-    }
+    return res.status(201).json({
+      success: true,
+      message: "تم إنشاء الحساب وإرسال طلب تفعيل الشركة للمراجعة",
+      request_id: result.request.id,
+      status: result.request.status
+    });
   } catch (error) {
     console.error("COMPANY REGISTRATION ERROR:", error);
     const failure = registrationFailure(error);
@@ -198,7 +151,7 @@ router.post("/request", authMiddleware, async (req, res) => {
       });
     }
 
-    const request = await createCompanyRequest({ authUserId, payload });
+    const request = await createCompanyRequest(supabaseAdmin, { authUserId, payload });
     return res.status(201).json({
       success: true,
       message: "تم إرسال طلب تفعيل الشركة بنجاح",
