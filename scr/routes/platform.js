@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../config/supabase-admin.js";
+import { listCompanyRequests } from "../../server/lib/companyRequests.js";
 
 const router = express.Router();
 
@@ -24,13 +25,8 @@ function platformAuth(req, res, next) {
 
 router.get("/company-requests", platformAuth, async (_req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("company_requests")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    return res.json({ success: true, requests: data || [] });
+    const requests = await listCompanyRequests(supabaseAdmin);
+    return res.json({ success: true, requests });
   } catch (error) {
     console.error("PLATFORM REQUESTS ERROR:", error);
     return res.status(500).json({
