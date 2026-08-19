@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../../scr/config/supabase-admin.js";
 import { registrationFailure } from "../lib/registrationFailure.js";
+import { upsertCompanyOwnerProfile } from "../lib/companyProfile.js";
 
 const router = express.Router();
 
@@ -121,14 +122,7 @@ router.post("/register", async (req, res) => {
     try {
       // قد ينشئ مشغل Supabase ملف المستخدم تلقائياً عند إنشاء حساب المصادقة؛
       // لذلك نستخدم upsert لتجنب خطأ القيد الفريد في الحالتين.
-      const { error: profileError } = await supabaseAdmin.from("users").upsert({
-        auth_user_id: authUserId,
-        email: payload.email,
-        role: "owner",
-        tenant_id: null
-      }, { onConflict: "auth_user_id" });
-
-      if (profileError) throw profileError;
+      await upsertCompanyOwnerProfile(supabaseAdmin, authUserId, payload.email);
 
       const request = await createCompanyRequest({ authUserId, payload });
       return res.status(201).json({
