@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import { getSupabase } from "../config/supabase.js";
+import { resolveLoginNextStep } from "../../server/lib/loginNextStep.js";
 
 const router = express.Router();
 
@@ -60,15 +61,10 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    let nextStep = "create_company";
-    let message = "يمكنك إضافة بيانات الشركة";
-    let companyStatus = "none";
+    let tenantStatus = null;
+    let requestStatus = null;
 
-    if (user.is_platform_owner === true || user.role === "platform_owner") {
-      nextStep = "platform";
-      message = "مرحباً بك في لوحة إدارة المنصة";
-      companyStatus = "active";
-    } else if (user.tenant_id) {
+    if (!(user.is_platform_owner === true || user.role === "platform_owner") && user.tenant_id) {
       const { data: tenant, error: tenantError } = await supabase
         .from("tenants")
         .select("status")
@@ -76,17 +72,8 @@ router.post("/login", async (req, res) => {
         .maybeSingle();
 
       if (tenantError) throw tenantError;
-
-      if (tenant?.status === "active") {
-        nextStep = "dashboard";
-        message = "تم تسجيل الدخول إلى لوحة الشركة";
-        companyStatus = "active";
-      } else {
-        nextStep = "pending";
-        message = "الشركة قيد التفعيل";
-        companyStatus = "pending";
-      }
-    } else {
+      tenantStatus = tenant?.status ?? null;
+    } else if (!(user.is_platform_owner === true || user.role === "platform_owner")) {
       const { data: request, error: requestError } = await supabase
         .from("company_requests")
         .select("status")
@@ -96,19 +83,10 @@ router.post("/login", async (req, res) => {
         .maybeSingle();
 
       if (requestError) throw requestError;
-
-      if (request?.status === "pending" || request?.status === "approved") {
-        nextStep = "pending";
-        message = request.status === "approved"
-          ? "تمت الموافقة ويجري تجهيز الشركة"
-          : "طلب الشركة قيد المراجعة";
-        companyStatus = "pending";
-      } else if (request?.status === "rejected") {
-        nextStep = "create_company";
-        message = "يمكنك مراجعة البيانات وإرسال طلب شركة جديد";
-        companyStatus = "rejected";
-      }
+      requestStatus = request?.status ?? null;
     }
+
+    const { nextStep, message, companyStatus } = resolveLoginNextStep({ user, tenantStatus, requestStatus });
 
     const token = jwt.sign(
       {
