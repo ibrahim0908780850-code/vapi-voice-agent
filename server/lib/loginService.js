@@ -1,5 +1,7 @@
 import { resolveLoginNextStep } from "./loginNextStep.js";
 
+import { lookupCompanyAccess } from "./loginCompanyLookup.js";
+
 export async function authenticateLogin(client, credentials, signToken) {
   const email = String(credentials?.email || "").trim().toLowerCase();
   const password = String(credentials?.password || "");
@@ -19,18 +21,7 @@ export async function authenticateLogin(client, credentials, signToken) {
   if (userError) throw userError;
   if (!user) return { status: 404, body: { error: "account_not_found", message: "الحساب غير مكتمل. تواصل مع إدارة المنصة." } };
 
-  let tenantStatus = null;
-  let requestStatus = null;
-  const isPlatformOwner = user.is_platform_owner === true || user.role === "platform_owner";
-  if (!isPlatformOwner && user.tenant_id) {
-    const { data: tenant, error } = await client.from("tenants").select("status").eq("id", user.tenant_id).maybeSingle();
-    if (error) throw error;
-    tenantStatus = tenant?.status ?? null;
-  } else if (!isPlatformOwner) {
-    const { data: request, error } = await client.from("company_requests").select("status").eq("auth_user_id", authUser.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (error) throw error;
-    requestStatus = request?.status ?? null;
-  }
+  const { tenantStatus, requestStatus } = await lookupCompanyAccess(client, user, authUser.id);
 
   const { nextStep, message, companyStatus } = resolveLoginNextStep({ user, tenantStatus, requestStatus });
   const token = signToken({ id: user.id, auth_user_id: user.auth_user_id, email: user.email, tenant_id: user.tenant_id, role: user.role, is_platform_owner: user.is_platform_owner, company_status: companyStatus });
