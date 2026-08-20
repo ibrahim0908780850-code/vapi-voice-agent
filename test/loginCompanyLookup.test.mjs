@@ -13,7 +13,7 @@ test("checks the linked company before reading company requests", async () => {
   };
 
   const result = await lookupCompanyAccess(client, { tenant_id: "tenant-1", role: "owner", is_platform_owner: false }, "auth-1");
-  assert.deepEqual(result, { tenantStatus: "active", requestStatus: null });
+  assert.deepEqual(result, { tenantId: "tenant-1", tenantStatus: "active", requestStatus: null });
   assert.deepEqual(calls, ["tenants"]);
 });
 
@@ -28,7 +28,7 @@ test("uses a pending linked company before any request status", async () => {
   };
 
   const result = await lookupCompanyAccess(client, { tenant_id: "tenant-pending", role: "owner", is_platform_owner: false }, "auth-pending");
-  assert.deepEqual(result, { tenantStatus: "pending", requestStatus: null });
+  assert.deepEqual(result, { tenantId: "tenant-pending", tenantStatus: "pending", requestStatus: null });
   assert.deepEqual(calls, ["tenants"]);
 });
 
@@ -47,12 +47,49 @@ test("checks the latest request only when the account has no linked company", as
   };
 
   const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-2");
-  assert.deepEqual(result, { tenantStatus: null, requestStatus: "pending" });
+  assert.deepEqual(result, { tenantId: null, tenantStatus: null, requestStatus: "pending" });
   assert.deepEqual(calls, ["company_requests"]);
 });
 
 test("does not query company data for a platform owner", async () => {
   const client = { from() { throw new Error("Platform owners do not require a company lookup"); } };
   const result = await lookupCompanyAccess(client, { tenant_id: null, role: "platform_owner", is_platform_owner: true }, "auth-platform");
-  assert.deepEqual(result, { tenantStatus: null, requestStatus: null });
+  assert.deepEqual(result, { tenantId: null, tenantStatus: null, requestStatus: null });
+});
+
+test("repairs a historical approved request link and reads its active tenant", async () => {
+  const calls = [];
+  const client = {
+    from(table) {
+      calls.push(table);
+      if (table === "company_requests") {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  order() {
+                    return {
+                      limit() {
+                        return { async maybeSingle() { return { data: { status: "approved", tenant_id: "legacy-tenant" }, error: null }; } };
+                      }
+                    };
+                  }
+                };
+              }
+            };
+          }
+        };
+      }
+      if (table === "tenants") {
+        return { select() { return { eq() { return { async maybeSingle() { return { data: { status: "active" }, error: null }; } }; } }; } };
+      }
+      assert.equal(table, "users");
+      return { update(values) { assert.deepEqual(values, { tenant_id: "legacy-tenant" }); return { async eq(column, value) { assert.equal(column, "auth_user_id"); assert.equal(value, "auth-legacy"); return { error: null }; } }; } };
+    }
+  };
+
+  const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-legacy");
+  assert.deepEqual(result, { tenantId: "legacy-tenant", tenantStatus: "active", requestStatus: "approved" });
+  assert.deepEqual(calls, ["company_requests", "tenants", "users"]);
 });

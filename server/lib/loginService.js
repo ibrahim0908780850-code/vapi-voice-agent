@@ -23,9 +23,10 @@ export async function authenticateLogin(client, credentials, signToken) {
   if (!user) return { status: 404, body: { error: "account_not_found", message: "الحساب غير مكتمل. تواصل مع إدارة المنصة." } };
 
   const accountUser = normalizePlatformOwner(user);
-  const { tenantStatus, requestStatus } = await lookupCompanyAccess(client, accountUser, authUser.id);
+  const { tenantId, tenantStatus, requestStatus } = await lookupCompanyAccess(client, accountUser, authUser.id);
+  const resolvedUser = tenantId ? { ...accountUser, tenant_id: tenantId } : accountUser;
 
-  const { nextStep, message, companyStatus } = resolveLoginNextStep({ user: accountUser, tenantStatus, requestStatus });
-  const token = signToken({ id: accountUser.id, auth_user_id: accountUser.auth_user_id, email: accountUser.email, tenant_id: accountUser.tenant_id, role: accountUser.role, is_platform_owner: accountUser.is_platform_owner, company_status: companyStatus });
-  return { status: 200, body: { success: true, token, next_step: nextStep, message, user: { id: accountUser.id, email: accountUser.email, tenant_id: accountUser.tenant_id, role: accountUser.role, is_platform_owner: accountUser.is_platform_owner, company_status: companyStatus } } };
+  const { nextStep, message, companyStatus } = resolveLoginNextStep({ user: resolvedUser, tenantStatus, requestStatus });
+  const token = signToken({ id: resolvedUser.id, auth_user_id: resolvedUser.auth_user_id, email: resolvedUser.email, tenant_id: resolvedUser.tenant_id, role: resolvedUser.role, is_platform_owner: resolvedUser.is_platform_owner, company_status: companyStatus });
+  return { status: 200, body: { success: true, token, next_step: nextStep, message, user: { id: resolvedUser.id, email: resolvedUser.email, tenant_id: resolvedUser.tenant_id, role: resolvedUser.role, is_platform_owner: resolvedUser.is_platform_owner, company_status: companyStatus } } };
 }
