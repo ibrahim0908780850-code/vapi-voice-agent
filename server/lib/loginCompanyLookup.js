@@ -1,6 +1,7 @@
+import { isPlatformOwner } from "./platformOwner.js";
+
 export async function lookupCompanyAccess(client, user, authUserId) {
-  const isPlatformOwner = user.is_platform_owner === true || user.role === "platform_owner";
-  if (isPlatformOwner) return { tenantStatus: null, requestStatus: null };
+  if (isPlatformOwner(user)) return { tenantStatus: null, requestStatus: null };
 
   // A linked tenant is the primary source of truth. Its state decides whether
   // the user reaches the company dashboard or the pending-activation page.

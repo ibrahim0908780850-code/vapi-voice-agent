@@ -1,6 +1,7 @@
 import { resolveLoginNextStep } from "./loginNextStep.js";
 
 import { lookupCompanyAccess } from "./loginCompanyLookup.js";
+import { normalizePlatformOwner } from "./platformOwner.js";
 
 export async function authenticateLogin(client, credentials, signToken) {
   const email = String(credentials?.email || "").trim().toLowerCase();
@@ -21,9 +22,10 @@ export async function authenticateLogin(client, credentials, signToken) {
   if (userError) throw userError;
   if (!user) return { status: 404, body: { error: "account_not_found", message: "الحساب غير مكتمل. تواصل مع إدارة المنصة." } };
 
-  const { tenantStatus, requestStatus } = await lookupCompanyAccess(client, user, authUser.id);
+  const accountUser = normalizePlatformOwner(user);
+  const { tenantStatus, requestStatus } = await lookupCompanyAccess(client, accountUser, authUser.id);
 
-  const { nextStep, message, companyStatus } = resolveLoginNextStep({ user, tenantStatus, requestStatus });
-  const token = signToken({ id: user.id, auth_user_id: user.auth_user_id, email: user.email, tenant_id: user.tenant_id, role: user.role, is_platform_owner: user.is_platform_owner, company_status: companyStatus });
-  return { status: 200, body: { success: true, token, next_step: nextStep, message, user: { id: user.id, email: user.email, tenant_id: user.tenant_id, role: user.role, is_platform_owner: user.is_platform_owner, company_status: companyStatus } } };
+  const { nextStep, message, companyStatus } = resolveLoginNextStep({ user: accountUser, tenantStatus, requestStatus });
+  const token = signToken({ id: accountUser.id, auth_user_id: accountUser.auth_user_id, email: accountUser.email, tenant_id: accountUser.tenant_id, role: accountUser.role, is_platform_owner: accountUser.is_platform_owner, company_status: companyStatus });
+  return { status: 200, body: { success: true, token, next_step: nextStep, message, user: { id: accountUser.id, email: accountUser.email, tenant_id: accountUser.tenant_id, role: accountUser.role, is_platform_owner: accountUser.is_platform_owner, company_status: companyStatus } } };
 }

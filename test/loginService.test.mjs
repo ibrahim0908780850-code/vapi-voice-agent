@@ -29,6 +29,20 @@ test("returns platform for a platform owner", async () => {
   assert.equal(result.status, 200); assert.equal(result.body.next_step, "platform");
 });
 
+test("routes the configured platform owner email before checking company data", async () => {
+  const previousOwnerEmail = process.env.PLATFORM_OWNER_EMAIL;
+  process.env.PLATFORM_OWNER_EMAIL = "platform@example.com";
+  try {
+    const user = { ...baseUser, email: "platform@example.com", role: "owner", is_platform_owner: false, tenant_id: null };
+    const result = await authenticateLogin(clientFor(user), { ...credentials, email: "platform@example.com" }, () => "test-token");
+    assert.equal(result.status, 200); assert.equal(result.body.next_step, "platform");
+    assert.equal(result.body.user.is_platform_owner, true);
+  } finally {
+    if (previousOwnerEmail === undefined) delete process.env.PLATFORM_OWNER_EMAIL;
+    else process.env.PLATFORM_OWNER_EMAIL = previousOwnerEmail;
+  }
+});
+
 test("returns company dashboard for an active company owner", async () => {
   const result = await authenticateLogin(clientFor({ ...baseUser, tenant_id: "tenant-1" }), credentials, () => "test-token");
   assert.equal(result.status, 200); assert.equal(result.body.next_step, "dashboard");

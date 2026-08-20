@@ -1,5 +1,7 @@
-export function resolveLoginNextStep({ user, tenantStatus = null, requestStatus = null }) {
-  if (user.is_platform_owner === true || user.role === "platform_owner") {
+import { isPlatformOwner } from "./platformOwner.js";
+
+export function resolveLoginNextStep({ user, tenantStatus, requestStatus }) {
+  if (isPlatformOwner(user)) {
     return { nextStep: "platform", message: "مرحباً بك في لوحة إدارة المنصة", companyStatus: "active" };
   }
 
