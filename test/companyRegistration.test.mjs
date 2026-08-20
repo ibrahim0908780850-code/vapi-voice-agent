@@ -95,3 +95,41 @@ test("retries with the core request fields when an optional column is missing in
   assert.equal(attempts[1].phone, undefined);
   assert.equal(attempts[1].website, undefined);
 });
+
+test("rolls back a provisional tenant without masking the original registration failure", async () => {
+  const calls = [];
+  const profileError = new Error("profile-save-failed");
+  const client = {
+    auth: {
+      admin: {
+        async createUser() { return { data: { user: { id: "auth-rollback" } }, error: null }; },
+        async deleteUser(id) { calls.push(["deleteUser", id]); }
+      }
+    },
+    from(table) {
+      if (table === "users") {
+        return {
+          select() { return { eq() { return { async maybeSingle() { return { data: null, error: null }; } }; } }; },
+          async upsert() { return { error: profileError }; }
+        };
+      }
+      if (table === "tenants") {
+        return {
+          insert() { return { select() { return { async single() { return { data: { id: "tenant-rollback" }, error: null }; } }; } }; },
+          delete() {
+            calls.push(["deleteTenant"]);
+            return { async eq(column, value) { calls.push(["tenantEq", column, value]); return { error: null }; } };
+          }
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    }
+  };
+
+  await assert.rejects(() => registerCompanyAccount(client, payload), profileError);
+  assert.deepEqual(calls, [
+    ["deleteTenant"],
+    ["tenantEq", "id", "tenant-rollback"],
+    ["deleteUser", "auth-rollback"]
+  ]);
+});

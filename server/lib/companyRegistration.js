@@ -79,7 +79,11 @@ export async function registerCompanyAccount(client, payload) {
     return { kind: "success", request };
   } catch (error) {
     if (pendingTenant?.id) {
-      await client.from("tenants").delete().eq("id", pendingTenant.id).catch(() => undefined);
+      try {
+        await client.from("tenants").delete().eq("id", pendingTenant.id);
+      } catch {
+        // Keep the original registration failure as the response source.
+      }
     }
     await client.auth.admin.deleteUser(authUserId).catch(() => undefined);
     throw error;
