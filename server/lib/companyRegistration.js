@@ -6,11 +6,11 @@ export async function createCompanyRequest(client, { authUserId, payload }) {
     full_name: payload.fullName || payload.email,
     email: payload.email,
     company_name: payload.companyName,
-    company_type: payload.companyType,
     status: "pending"
   };
   const optionalRequestValues = {};
 
+  if (payload.companyType) optionalRequestValues.company_type = payload.companyType;
   if (payload.phone) optionalRequestValues.phone = payload.phone;
   if (payload.website) optionalRequestValues.website = payload.website;
   if (payload.description) optionalRequestValues.description = payload.description;

@@ -44,7 +44,7 @@ test("sends only required request fields when the optional company details are b
 
   const request = await createCompanyRequest(client, {
     authUserId: "auth-2",
-    payload: { ...payload, phone: null, website: "", description: null, documentUrl: null }
+    payload: { ...payload, companyType: null, phone: null, website: "", description: null, documentUrl: null }
   });
 
   assert.deepEqual(request, { id: "request-2", status: "pending" });
@@ -53,7 +53,6 @@ test("sends only required request fields when the optional company details are b
     full_name: "شركة اختبار",
     email: "owner@example.com",
     company_name: "نمو تجريبي",
-    company_type: "general",
     status: "pending"
   });
 });
@@ -94,6 +93,40 @@ test("retries with the core request fields when an optional column is missing in
   assert.equal(attempts[0].website, "https://example.com");
   assert.equal(attempts[1].phone, undefined);
   assert.equal(attempts[1].website, undefined);
+  assert.equal(attempts[1].company_type, undefined);
+});
+
+test("retries without company_type when that column is absent from the deployed schema", async () => {
+  const attempts = [];
+  const client = {
+    from(table) {
+      assert.equal(table, "company_requests");
+      return {
+        insert(values) {
+          attempts.push(values);
+          return {
+            select() {
+              return {
+                async single() {
+                  if (attempts.length === 1) {
+                    return { data: null, error: { code: "PGRST204", message: "Could not find the 'company_type' column of 'company_requests' in the schema cache" } };
+                  }
+                  return { data: { id: "request-company-type-fallback", status: "pending" }, error: null };
+                }
+              };
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const request = await createCompanyRequest(client, { authUserId: "auth-company-type", payload });
+  assert.deepEqual(request, { id: "request-company-type-fallback", status: "pending" });
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0].company_type, "general");
+  assert.equal(attempts[1].company_type, undefined);
+  assert.equal(attempts[1].company_name, "نمو تجريبي");
 });
 
 test("rolls back a provisional tenant without masking the original registration failure", async () => {
