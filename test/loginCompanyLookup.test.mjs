@@ -86,7 +86,7 @@ test("falls back to request status when a legacy request table has no tenant_id 
 
   const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-no-request-tenant");
   assert.deepEqual(result, { tenantId: null, tenantStatus: null, requestStatus: "pending" });
-  assert.deepEqual(requestedColumns, ["status, tenant_id", "status"]);
+  assert.deepEqual(requestedColumns, ["status, tenant_id, company_name", "status, company_name"]);
 });
 
 test("does not query company data for a platform owner", async () => {
@@ -129,5 +129,54 @@ test("repairs a historical approved request link and reads its active tenant", a
 
   const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-legacy");
   assert.deepEqual(result, { tenantId: "legacy-tenant", tenantStatus: "active", requestStatus: "approved" });
+  assert.deepEqual(calls, ["company_requests", "tenants", "users"]);
+});
+
+test("finds an active tenant by company name for an approved legacy request without tenant_id", async () => {
+  const calls = [];
+  const client = {
+    from(table) {
+      calls.push(table);
+      if (table === "company_requests") {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  order() {
+                    return {
+                      limit() {
+                        return { async maybeSingle() { return { data: { status: "approved", company_name: "شركة تاريخية" }, error: null }; } };
+                      }
+                    };
+                  }
+                };
+              }
+            };
+          }
+        };
+      }
+      if (table === "tenants") {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  eq() {
+                    return { async maybeSingle() { return { data: { id: "tenant-by-name", status: "active" }, error: null }; } };
+                  }
+                };
+              }
+            };
+          }
+        };
+      }
+      assert.equal(table, "users");
+      return { update() { return { async eq() { return { error: null }; } }; } };
+    }
+  };
+
+  const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-name-match");
+  assert.deepEqual(result, { tenantId: "tenant-by-name", tenantStatus: "active", requestStatus: "approved" });
   assert.deepEqual(calls, ["company_requests", "tenants", "users"]);
 });
