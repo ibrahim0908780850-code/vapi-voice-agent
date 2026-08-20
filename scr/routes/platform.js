@@ -70,7 +70,7 @@ router.post("/create-company", platformAuth, async (req, res) => {
 
     const { error: updateError } = await supabaseAdmin
       .from("company_requests")
-      .update({ status: "approved", tenant_id: tenant.id, approved_by: req.user.id, approved_at: new Date() })
+      .update({ status: "approved", approved_by: req.user.id, approved_at: new Date() })
       .eq("id", requestId);
     if (updateError) throw updateError;
 

@@ -1,5 +1,20 @@
 import { isPlatformOwner } from "./platformOwner.js";
 
+function isMissingColumn(error) {
+  const details = `${error?.code || ""} ${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return error?.code === "PGRST204" || /column.*(does not exist|could not find)|schema cache/.test(details);
+}
+
+async function readLatestRequest(client, authUserId, columns) {
+  return client
+    .from("company_requests")
+    .select(columns)
+    .eq("auth_user_id", authUserId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
 export async function lookupCompanyAccess(client, user, authUserId) {
   if (isPlatformOwner(user)) return { tenantId: null, tenantStatus: null, requestStatus: null };
 
@@ -16,13 +31,10 @@ export async function lookupCompanyAccess(client, user, authUserId) {
   }
 
   // Only accounts without a linked company fall back to their latest request.
-  const { data: request, error } = await client
-    .from("company_requests")
-    .select("status, tenant_id")
-    .eq("auth_user_id", authUserId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let { data: request, error } = await readLatestRequest(client, authUserId, "status, tenant_id");
+  if (error && isMissingColumn(error)) {
+    ({ data: request, error } = await readLatestRequest(client, authUserId, "status"));
+  }
   if (error) throw error;
 
   if (request?.tenant_id) {

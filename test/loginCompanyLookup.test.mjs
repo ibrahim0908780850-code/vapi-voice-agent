@@ -51,6 +51,44 @@ test("checks the latest request only when the account has no linked company", as
   assert.deepEqual(calls, ["company_requests"]);
 });
 
+test("falls back to request status when a legacy request table has no tenant_id column", async () => {
+  const requestedColumns = [];
+  const client = {
+    from(table) {
+      assert.equal(table, "company_requests");
+      return {
+        select(columns) {
+          requestedColumns.push(columns);
+          return {
+            eq() {
+              return {
+                order() {
+                  return {
+                    limit() {
+                      return {
+                        async maybeSingle() {
+                          if (requestedColumns.length === 1) {
+                            return { data: null, error: { code: "PGRST204", message: "Could not find the 'tenant_id' column" } };
+                          }
+                          return { data: { status: "pending" }, error: null };
+                        }
+                      };
+                    }
+                  };
+                }
+              };
+            }
+          };
+        }
+      };
+    }
+  };
+
+  const result = await lookupCompanyAccess(client, { tenant_id: null, role: "owner", is_platform_owner: false }, "auth-no-request-tenant");
+  assert.deepEqual(result, { tenantId: null, tenantStatus: null, requestStatus: "pending" });
+  assert.deepEqual(requestedColumns, ["status, tenant_id", "status"]);
+});
+
 test("does not query company data for a platform owner", async () => {
   const client = { from() { throw new Error("Platform owners do not require a company lookup"); } };
   const result = await lookupCompanyAccess(client, { tenant_id: null, role: "platform_owner", is_platform_owner: true }, "auth-platform");
