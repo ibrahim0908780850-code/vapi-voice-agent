@@ -3,6 +3,8 @@ import express from "express";
 import multer from "multer";
 
 import { getSupabase } from "../config/supabase.js";
+import { authenticateRequest, rejectTenantMismatch, requireTenantIdentity } from "../../server/lib/requestAuth.js";
+import { createMulterFileFilter, createSafeStoragePath, sendUploadError, UPLOAD_POLICIES, validateUploadedFile } from "../../server/lib/uploadSecurity.js";
 
 
 const router = express.Router();
@@ -15,31 +17,12 @@ const upload = multer({
 
     limits: {
 
-        fileSize: 5 * 1024 * 1024
+        fileSize: UPLOAD_POLICIES.image.maxBytes,
+        files: 1,
+        fields: 10
 
     },
-
-    fileFilter(req,file,cb){
-
-
-        if(
-            file.mimetype.startsWith("image/")
-        ){
-
-            cb(null,true);
-
-        }
-
-        else{
-
-            cb(
-                new Error("Only images allowed"),
-                false
-            );
-
-        }
-
-    }
+    fileFilter: createMulterFileFilter("image")
 
 });
 
@@ -53,7 +36,10 @@ const upload = multer({
 
 router.post(
 "/upload",
-upload.single("image"),
+authenticateRequest,
+requireTenantIdentity,
+rejectTenantMismatch,
+(req, res, next) => upload.single("image")(req, res, (error) => error ? sendUploadError(res, error) : next()),
 
 async(req,res)=>{
 
@@ -62,9 +48,6 @@ try{
 
 
 const {
-
-tenant_id,
-
 website_id,
 
 section
@@ -73,7 +56,7 @@ section
 
 
 
-if(!req.file || !tenant_id){
+if(!req.file){
 
 
 return res.status(400).json({
@@ -92,29 +75,33 @@ error:"missing_data"
 const supabase =
 getSupabase();
 
+const tenant_id = req.tenantId;
+
+const validation = validateUploadedFile(req.file, "image");
+if (!validation.ok) return sendUploadError(res, { code: validation.code });
+
+if (website_id) {
+  const { data: website, error: websiteError } = await supabase
+    .from("websites")
+    .select("id")
+    .eq("id", website_id)
+    .eq("tenant_id", tenant_id)
+    .maybeSingle();
+  if (websiteError) throw websiteError;
+  if (!website) return res.status(404).json({ success: false, error: "website_not_found" });
+}
+
 
 
 
 
 // Clean filename
 
-const safeName =
-
-req.file.originalname
-
-.replace(
-/[^a-zA-Z0-9.]/g,
-"-"
-);
-
-
-
-
-
-
-const fileName =
-
-`${tenant_id}/${website_id || "main"}/${Date.now()}-${safeName}`;
+const fileName = createSafeStoragePath({
+  tenantId,
+  namespace: website_id ? `website-${website_id}` : "website-main",
+  extension: validation.extension
+});
 
 
 
@@ -257,13 +244,7 @@ error
 
 
 
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
+res.status(500).json({ success:false, error:"media_upload_failed" });
 
 
 }

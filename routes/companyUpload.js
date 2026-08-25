@@ -1,287 +1,53 @@
 import express from "express";
 import multer from "multer";
-import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "../scr/config/supabase-admin.js";
+import { authenticateRequest, requireTenantIdentity } from "../server/lib/requestAuth.js";
+import {
+  createMulterFileFilter,
+  createSafeStoragePath,
+  sendUploadError,
+  UPLOAD_POLICIES,
+  validateUploadedFile
+} from "../server/lib/uploadSecurity.js";
 
 const router = express.Router();
-
-
-// =========================
-// MULTER CONFIG
-// =========================
-
 const upload = multer({
-
   storage: multer.memoryStorage(),
+  limits: { fileSize: UPLOAD_POLICIES.document.maxBytes, files: 1, fields: 10 },
+  fileFilter: createMulterFileFilter("document")
+});
 
-  limits: {
-    fileSize: 10 * 1024 * 1024
-  },
+function uploadSingleDocument(req, res, next) {
+  return upload.single("file")(req, res, (error) => error ? sendUploadError(res, error) : next());
+}
 
-  fileFilter(req, file, cb){
+router.post("/upload-document", authenticateRequest, requireTenantIdentity, uploadSingleDocument, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "FILE_REQUIRED" });
 
-    const allowedTypes = [
+    const validation = validateUploadedFile(req.file, "document");
+    if (!validation.ok) return sendUploadError(res, { code: validation.code });
 
-      "application/pdf",
+    const filePath = createSafeStoragePath({
+      tenantId: req.tenantId,
+      namespace: "company-documents",
+      extension: validation.extension
+    });
 
-      "application/msword",
+    const { data, error } = await supabaseAdmin.storage
+      .from("company-documents")
+      .upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
 
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-    ];
-
-
-    if(
-      allowedTypes.includes(file.mimetype)
-    ){
-
-      cb(null,true);
-
-    }else{
-
-      cb(
-        new Error("invalid_file_type"),
-        false
-      );
-
+    if (error) {
+      console.error("Company document storage error", error.message);
+      return res.status(500).json({ error: "UPLOAD_FAILED" });
     }
 
+    return res.json({ success: true, path: data.path });
+  } catch (error) {
+    console.error("Company document upload error", error.message);
+    return res.status(500).json({ error: "UPLOAD_FAILED" });
   }
-
 });
-
-
-
-
-// =========================
-// AUTH
-// =========================
-
-function authMiddleware(req,res,next){
-
-try{
-
-
-const auth =
-req.headers.authorization;
-
-
-if(!auth){
-
-return res.status(401).json({
-
-error:"missing_token"
-
-});
-
-}
-
-
-
-const token =
-auth.split(" ")[1];
-
-
-req.user =
-jwt.verify(
-
-token,
-
-process.env.JWT_SECRET
-
-);
-
-
-
-next();
-
-
-}
-
-catch(error){
-
-return res.status(401).json({
-
-error:"invalid_token"
-
-});
-
-}
-
-
-}
-
-
-
-
-
-// =========================
-// UPLOAD DOCUMENT
-// =========================
-
-
-router.post(
-
-"/upload-document",
-
-authMiddleware,
-
-upload.single("file"),
-
-
-async(req,res)=>{
-
-
-try{
-
-
-if(!req.file){
-
-return res.status(400).json({
-
-error:"file_required"
-
-});
-
-}
-
-
-
-const file =
-req.file;
-
-
-
-const safeName =
-
-file.originalname
-
-.toLowerCase()
-
-.replace(
-/[^a-z0-9.]/g,
-"-"
-);
-
-
-
-
-
-const filePath =
-
-`${req.user.auth_user_id}/${Date.now()}-${safeName}`;
-
-
-
-
-
-
-const {
-
-data,
-
-error
-
-}=await supabaseAdmin
-
-.storage
-
-.from(
-"company-documents"
-)
-
-.upload(
-
-filePath,
-
-file.buffer,
-
-{
-
-contentType:
-file.mimetype,
-
-upsert:false
-
-}
-
-);
-
-
-
-
-
-if(error){
-
-
-console.error(
-
-"STORAGE ERROR:",
-
-error
-
-);
-
-
-return res.status(500).json({
-
-error:"upload_failed"
-
-});
-
-
-}
-
-
-
-
-
-// نعيد مسار الملف فقط
-// بدون رابط مباشر
-
-return res.json({
-
-success:true,
-
-path:data.path
-
-});
-
-
-
-
-
-}
-
-
-catch(error){
-
-
-console.error(
-
-"UPLOAD DOCUMENT ERROR:",
-
-error
-
-);
-
-
-
-return res.status(500).json({
-
-error:error.message || "server_error"
-
-});
-
-
-}
-
-
-
-}
-
-);
-
-
 
 export default router;

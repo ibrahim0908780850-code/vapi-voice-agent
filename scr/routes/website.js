@@ -1,390 +1,67 @@
 import express from "express";
-import axios from "axios";
 import * as cheerio from "cheerio";
-
 import { getSupabase } from "../config/supabase.js";
-
+import { authenticateRequest, rejectTenantMismatch, requireTenantIdentity } from "../../server/lib/requestAuth.js";
+import { fetchSafeWebsite, SafeUrlError } from "../../server/lib/safeWebsiteFetch.js";
 
 const router = express.Router();
+const KNOWLEDGE_CHUNK_SIZE = 3000;
+const MAX_KNOWLEDGE_CHUNKS = 200;
 
+router.post("/ingest", authenticateRequest, requireTenantIdentity, rejectTenantMismatch, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url) return res.status(400).json({ success: false, error: "missing_data" });
 
+    const tenant_id = req.tenantId;
+    const supabase = getSupabase(tenant_id);
+    const { finalUrl, html } = await fetchSafeWebsite(url);
+    const websiteUrl = new URL(finalUrl);
 
-// =====================================
-// INGEST WEBSITE INTO AI KNOWLEDGE
-// =====================================
+    const $ = cheerio.load(html);
+    $("script, style, noscript, nav, footer").remove();
+    const text = $("body").text().replace(/\s+/g, " ").trim();
+    if (!text) return res.status(400).json({ success: false, error: "empty_content" });
 
-router.post("/ingest", async(req,res)=>{
+    const chunks = [];
+    for (let index = 0; index < text.length; index += KNOWLEDGE_CHUNK_SIZE) {
+      if (chunks.length >= MAX_KNOWLEDGE_CHUNKS) {
+        return res.status(413).json({ success: false, error: "website_content_too_large" });
+      }
+      chunks.push(text.substring(index, index + KNOWLEDGE_CHUNK_SIZE));
+    }
 
+    const records = chunks.map((chunk, index) => ({
+      tenant_id,
+      title: `Website Knowledge ${index + 1}`,
+      category: "website",
+      content: chunk,
+      metadata: {
+        source: "website",
+        url: websiteUrl.href,
+        domain: websiteUrl.hostname,
+        chunk: index + 1
+      }
+    }));
 
-try{
+    const { data, error } = await supabase.from("ai_knowledge_base").insert(records).select();
+    if (error) throw error;
 
+    const { error: updateError } = await supabase
+      .from("company_settings")
+      .update({ website: websiteUrl.href })
+      .eq("tenant_id", tenant_id);
+    if (updateError) throw updateError;
 
-const {
-
-url,
-
-tenant_id
-
-}=req.body;
-
-
-
-if(!url || !tenant_id){
-
-
-return res.status(400).json({
-
-success:false,
-
-error:"missing_data"
-
+    return res.json({ success: true, message: "Website indexed successfully", chunks: data.length });
+  } catch (error) {
+    console.error("Website ingestion error", error.message);
+    if (error instanceof SafeUrlError) {
+      const status = ["INVALID_URL", "UNSAFE_URL", "UNSAFE_REDIRECT"].includes(error.code) ? 400 : 502;
+      return res.status(status).json({ success: false, error: error.code });
+    }
+    return res.status(500).json({ success: false, error: "website_ingestion_failed" });
+  }
 });
-
-
-}
-
-
-
-
-let websiteUrl;
-
-
-try{
-
-
-websiteUrl = new URL(url);
-
-
-}
-
-catch{
-
-
-return res.status(400).json({
-
-success:false,
-
-error:"invalid_url"
-
-});
-
-
-}
-
-
-
-
-// Multi tenant connection
-const supabase = getSupabase(tenant_id);
-
-
-
-
-
-
-
-// =========================
-// FETCH WEBSITE
-// =========================
-
-
-const response = await axios.get(
-
-websiteUrl.href,
-
-{
-
-timeout:15000,
-
-maxContentLength:5000000,
-
-headers:{
-
-"User-Agent":
-"SALIH-AI-Crawler/1.0"
-
-}
-
-}
-
-);
-
-
-
-
-
-const html=response.data;
-
-
-
-
-
-
-// =========================
-// EXTRACT CONTENT
-// =========================
-
-
-const $ = cheerio.load(html);
-
-
-
-$("script").remove();
-
-$("style").remove();
-
-$("noscript").remove();
-
-$("nav").remove();
-
-$("footer").remove();
-
-
-
-
-
-const text = $("body")
-
-.text()
-
-.replace(/\s+/g," ")
-
-.trim();
-
-
-
-
-
-if(!text){
-
-
-return res.status(400).json({
-
-success:false,
-
-error:"empty_content"
-
-});
-
-
-}
-
-
-
-
-
-
-// =========================
-// SPLIT CONTENT
-// =========================
-
-
-const chunks=[];
-
-
-const size=3000;
-
-
-for(
-let i=0;
-i<text.length;
-i+=size
-){
-
-
-chunks.push(
-
-text.substring(
-
-i,
-
-i+size
-
-)
-
-);
-
-
-}
-
-
-
-
-
-
-
-// =========================
-// SAVE KNOWLEDGE
-// =========================
-
-
-const records = chunks.map(
-
-(chunk,index)=>(
-
-{
-
-tenant_id,
-
-
-title:
-
-`Website Knowledge ${index+1}`,
-
-
-category:
-
-"website",
-
-
-content:
-
-chunk,
-
-
-metadata:{
-
-source:"website",
-
-url:websiteUrl.href,
-
-domain:websiteUrl.hostname,
-
-chunk:index+1
-
-}
-
-}
-
-)
-
-);
-
-
-
-
-
-
-
-const {
-
-data,
-
-error
-
-}= await supabase
-
-.from("ai_knowledge_base")
-
-.insert(records)
-
-.select();
-
-
-
-
-
-
-if(error)
-
-throw error;
-
-
-
-
-
-
-
-// =========================
-// UPDATE COMPANY SETTINGS
-// =========================
-
-
-const {
-
-error:updateError
-
-}= await supabase
-
-.from("company_settings")
-
-.update({
-
-website:url
-
-})
-
-.eq(
-
-"tenant_id",
-
-tenant_id
-
-);
-
-
-
-
-if(updateError)
-
-throw updateError;
-
-
-
-
-
-
-
-res.json({
-
-success:true,
-
-
-message:
-
-"Website indexed successfully",
-
-
-chunks:data.length
-
-});
-
-
-
-
-
-}
-
-catch(error){
-
-
-console.error(
-
-"Website ingestion error",
-
-error
-
-);
-
-
-
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
-
-
-}
-
-
-
-});
-
-
-
-
 
 export default router;
