@@ -88,4 +88,6 @@
 
 ## التحقق
 
-نجحت مجموعة backend كاملة بعد التعديلات: **72/72**. كما نجح اختبار HTTP لمسار dashboard agent باستخدام JWT يحمل `id` و`auth_user_id` و`tenant_id`، ويؤكد عدم الحاجة إلى Supabase access token. أضيف اختبار Vitest لوحدة `api.ts` في فرع salih-ai، لكن تشغيله محلياً محجوب بمشكلتين موروثتين في المستودع: `vitest` غير مدرج في `package.json` رغم وجود script له، و`package-lock.json` غير متزامن مع `package.json`. لم يُعدّل lockfile أو dependencies كجزء من هذه المراجعة.
+نجحت مجموعة backend كاملة بعد التعديلات: **72/72**. كما نجح اختبار HTTP لمسار dashboard agent باستخدام JWT يحمل `id` و`auth_user_id` و`tenant_id`، ويؤكد عدم الحاجة إلى Supabase access token. أُصلحت بيئة Vitest المرجعية في فرع salih-ai (تبعيات الاختبار ومسارات root)، ثم نجح اختبار `api.ts`: **2/2**.
+
+يبقى فحص TypeScript العام لواجهة salih-ai مانعاً للدمج: انتهى `npm run check` برمز خروج 1 و**1843** رسالة TypeScript في بيئة Node 22، بينما يعلن المشروع طلب Node 24. تتضمن النتائج المتبقية methods واجهة غير معرفة مثل `agents`, `crm`, `ai`, `knowledge`, `reports`, `settings`, `team`, و`websites`، إضافة إلى مشكلات إعدادات وأنواع موروثة. لا يوجد دليل تكامل حي مع Railway لأن فرع الخلفية لم يُنشر إلى staging مستقل؛ لذلك قرار الدمج إلى `main` هو **غير جاهز** رغم نجاح اختبارات العقود المؤكدة.
