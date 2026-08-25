@@ -9,7 +9,7 @@ process.env.JWT_SECRET = "route-authorization-test-secret";
 process.env.PLATFORM_OWNER_EMAIL = "platform@example.com";
 
 const express = (await import("express")).default;
-const websiteRoutes = (await import("../scr/routes/website.routes.js")).default;
+const { createWebsiteRouter } = await import("../scr/routes/website.routes.js");
 const { createWebsiteContentRouter } = await import("../scr/routes/website_content.routes.js");
 const { createWebsiteOrdersRouter } = await import("../scr/routes/website.orders.routes.js");
 
@@ -21,10 +21,10 @@ function platformToken() {
   return jwt.sign({ id: "platform-user", auth_user_id: "auth-platform", email: "platform@example.com", role: "platform_owner" }, process.env.JWT_SECRET);
 }
 
-async function withServer(run, { getClient, contentClient } = {}) {
+async function withServer(run, { getClient, contentClient, websiteClient } = {}) {
   const app = express();
   app.use(express.json());
-  app.use("/website", websiteRoutes);
+  app.use("/website", createWebsiteRouter({ getClient: websiteClient }));
   app.use("/content", createWebsiteContentRouter({ getClient: contentClient }));
   app.use("/orders", createWebsiteOrdersRouter({ getClient }));
   const server = http.createServer(app);
@@ -111,4 +111,19 @@ test("website content preserves a successful response for its authenticated tena
     assert.equal(response.status, 200);
     assert.deepEqual(response.body, { success: true, content });
   }, { contentClient: () => client });
+});
+
+test("website route preserves a successful response for its authenticated tenant", async () => {
+  const website = { id: "website-a", tenant_id: "tenant-a", slug: "company-a", status: "draft" };
+  const client = {
+    from() { return this; },
+    select() { return this; },
+    eq() { return this; },
+    maybeSingle: async () => ({ data: website, error: null })
+  };
+  await withServer(async (baseUrl) => {
+    const response = await request(baseUrl, "/website/tenant-a", { token: tokenForTenant("tenant-a") });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { success: true, website });
+  }, { websiteClient: () => client });
 });
