@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allowedOrigins, securityHeaders } from "../server/lib/httpSecurity.js";
+import { allowedOrigins, sanitizeServerErrors, securityHeaders } from "../server/lib/httpSecurity.js";
 
 test("keeps the deployed frontend in the CORS allow-list without allowing arbitrary origins", () => {
   const origins = allowedOrigins();
@@ -17,4 +17,15 @@ test("sets API-safe hardening headers without injecting a page CSP", () => {
   assert.equal(headers["X-Frame-Options"], "DENY");
   assert.equal(headers["Referrer-Policy"], "no-referrer");
   assert.equal(headers["Content-Security-Policy"], undefined);
+});
+
+test("removes database-style details from every 5xx JSON response", () => {
+  let forwarded;
+  const res = {
+    statusCode: 500,
+    json(body) { forwarded = body; return this; }
+  };
+  sanitizeServerErrors({}, res, () => {});
+  res.json({ success: false, error: "relation users does not exist", message: "internal path /app/server" });
+  assert.deepEqual(forwarded, { success: false, error: "server_error" });
 });

@@ -1,7 +1,7 @@
 
 import express from "express";
 import cors from "cors";
-import { createCorsOptions, securityHeaders } from "./server/lib/httpSecurity.js";
+import { createCorsOptions, sanitizeServerErrors, securityHeaders } from "./server/lib/httpSecurity.js";
 import { createRateLimiter } from "./server/lib/requestControls.js";
 
 
@@ -232,6 +232,7 @@ app.use(
   cors(createCorsOptions())
 );
 app.use(securityHeaders);
+app.use(sanitizeServerErrors);
 
 
 

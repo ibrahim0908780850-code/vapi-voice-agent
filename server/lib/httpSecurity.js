@@ -28,3 +28,16 @@ export function securityHeaders(_req, res, next) {
   res.setHeader("Cross-Origin-Resource-Policy", "same-site");
   return next();
 }
+
+export function sanitizeServerErrors(_req, res, next) {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 500 && body && typeof body === "object") {
+      const safeBody = { ...body, error: "server_error" };
+      delete safeBody.message;
+      return originalJson(safeBody);
+    }
+    return originalJson(body);
+  };
+  return next();
+}
