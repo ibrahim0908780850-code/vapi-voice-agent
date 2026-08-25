@@ -8,7 +8,7 @@
 
 عالجت هذه المرحلة أخطر مسارات الإدخال الخارجي في الخلفية: رفع الملفات، استيراد المواقع، الويبهوكات، حدود الطلبات، وإدارة موارد الموقع وCRM. أصبح تحديد الشركة في المسارات المعالجة يأتي من JWT الموثوق بدلاً من `tenant_id` المرسل من العميل، وأضيفت اختبارات انحدار للمسارات الخطرة.
 
-> **نتيجة الاختبارات النهائية: 58/58 ناجحة، 0 فاشلة.**
+> **نتيجة الاختبارات النهائية: 64/64 ناجحة، 0 فاشلة.**
 
 ## الثغرات والإصلاحات
 
@@ -18,9 +18,9 @@
 | رفع وثائق الشركة ووسائط الموقع ومعرفة AI | قبول `tenant_id` من body أو دون مصادقة كاملة | `authenticateRequest` و`requireTenantIdentity` ورفض تطابق tenant المخالف والتحقق من ملكية `website_id` | يمنع Tenant A من الكتابة باسم Tenant B في المسارات المعالجة |
 | استيراد الموقع | جلب URL خارجي من دون دفاع شامل ضد SSRF | يسمح بـHTTP/HTTPS فقط، يرفض localhost وIPv4/IPv6 الخاصة وlink-local وmetadata، يفحص DNS والتحويلات، ويحد الحجم والزمن والتحويلات | يمنع الوصول الداخلي المباشر أو عبر redirect |
 | Meta Webhook | verify token ثابت وعدم وجود تحقق توقيع أو تحديد tenant موثوق | `META_WEBHOOK_VERIFY_TOKEN` وHMAC SHA-256 على raw body وتحديد tenant من القناة المسجلة | يمنع الطلبات غير الموقعة ويزيل tenant الافتراضي غير الموثوق |
-| Vapi وTwilio/WhatsApp وEmail | لا توجد مصادقة موحدة أو منع إعادة إرسال | اعتماد secret مهيأ للـprovider، تحقق Vapi Bearer/X-Vapi-Secret وTwilio signature وEmail bearer secret، مع claim idempotency | يمنع التزوير والتكرار عند إعداد المتغيرات المطلوبة في الإنتاج |
+| Vapi وTwilio/WhatsApp وEmail | لا توجد مصادقة موحدة أو منع إعادة إرسال | تحقق Vapi Bearer/X-Vapi-Secret وTwilio signature وSendGrid ECDSA على timestamp + raw body، مع claim idempotency | يمنع التزوير والتكرار عند إعداد المتغيرات المطلوبة في الإنتاج |
 | حدود الطلبات | لا يوجد حد مخصص للمسارات الحساسة | حدود منفصلة للدخول والذكاء الاصطناعي والرفع والاستيراد والطلبات والويبهوكات؛ Redis عند توفره وfallback في الذاكرة | يعيد HTTP 429 مع ترويسات RateLimit عند تجاوز الحد |
-| إدارة المواقع وCRM | عمليات تعتمد ID/tenant من العميل فقط | تفويض JWT وملكية website/lead وصلاحية مالك المنصة لإدارة الطلبات | يعزل التعديل والنشر ومحتوى/تصميم الموقع وCRM بين الشركات |
+| إدارة المواقع وCRM | عمليات تعتمد ID/tenant من العميل فقط | تفويض JWT وملكية website/lead وصلاحية مالك المنصة لإدارة الطلبات، وربط lead العامة بموقع منشور للشركة | يعزل التعديل والنشر ومحتوى/تصميم الموقع وCRM بين الشركات ويمنع ربط lead بموقع أجنبي أو غير منشور |
 | الأخطاء والرؤوس وCORS | رسائل قاعدة البيانات قد تصل للعميل وCORS مضمّن | طبقة تنظيف 5xx، ورؤوس `nosniff` وframe/referrer/permissions، وقائمة CORS مهيأة عبر `FRONTEND_URL` مع الإبقاء على Vercel | يقلل كشف التفاصيل ويحافظ على origin الواجهة المنشورة |
 
 ## الملفات الرئيسية المعدلة أو المضافة
@@ -30,13 +30,14 @@
 | الحماية المشتركة | `server/lib/requestAuth.js`, `server/lib/uploadSecurity.js`, `server/lib/safeWebsiteFetch.js`, `server/lib/resourceAuthorization.js`, `server/lib/requestControls.js`, `server/lib/webhookSecurity.js`, `server/lib/httpSecurity.js` |
 | نقاط التشغيل والمسارات | `index.js`, `routes/companyUpload.js`, ومسارات `website`, `website_content`, `website_design`, `website_media`, `website_ai`, `website_orders`, `crm`, `meta.webhook`, `vapi.webhook`, `email.webhook`, `whatsapp` |
 | البيئة | `.env.example`، مع أسماء المتغيرات فقط ومن دون قيم سرية |
-| اختبارات الانحدار | `test/uploadSecurity.test.mjs`, `test/uploadAuthorization.test.mjs`, `test/safeWebsiteFetch.test.mjs`, `test/webhookSecurity.test.mjs`, `test/requestControls.test.mjs`, `test/httpSecurity.test.mjs` |
+| اختبارات الانحدار | `test/uploadSecurity.test.mjs`, `test/uploadAuthorization.test.mjs`, `test/safeWebsiteFetch.test.mjs`, `test/webhookSecurity.test.mjs`, `test/requestControls.test.mjs`, `test/httpSecurity.test.mjs`, `test/routeAuthorizationHttp.test.mjs` |
 
 ## التحقق المنفذ
 
 | الفحص | النتيجة |
 |---|---|
-| `npm test` | **58 ناجحاً، 0 فاشلاً** |
+| `npm test` | **64 ناجحاً، 0 فاشلاً** |
+| اختبارات HTTP للعزل | تثبت رفض غياب JWT، وانتحال tenant، وقراءة محتوى Tenant B، ووصول مستخدم عادي لإدارة الطلبات |
 | فحص صياغة Node للمسارات والمكتبات المعدلة | ناجح |
 | `git diff --check` | ناجح |
 | تشغيل الخادم بقيم بيئة اختبار غير حساسة | بدأ على المنفذ بنجاح ثم أوقفه timeout المقصود |
@@ -56,7 +57,7 @@
 | عالية | بعض المسارات الأقدم غير المشمولة في هذه الجولة ما زالت تحتاج مراجعة تفويض route-by-route، خصوصاً المسارات العامة وعمليات الدعوات ولوحات البيانات | إنشاء مصفوفة تفويض لكل route وإضافة اختبارات تكامل HTTP بحسابي Tenant A وTenant B |
 | متوسطة | fallback حدود الطلبات والتكرار داخل الذاكرة لا يتشارك بين replicas إذا تعذر Redis | التحقق من `REDIS_URL` في staging ومراقبة اتصال Redis قبل التوسع الأفقي |
 | متوسطة | التحقق من ملفات Office يعتمد توقيع الحاوية والنوع، ولا يحلل محتوى الماكرو | الإبقاء على buckets خاصة وعدم تنفيذ/عرض الملفات مباشرة، وإضافة فحص مكافحة برمجيات خبيثة إذا تغيرت طبيعة الملفات |
-| متوسطة | تحقق Email موحد بسر Bearer لأن المزود لم يكن محدداً في المسار السابق | عند تثبيت SendGrid أو Resend أو SES كموفر وحيد، استبداله بتحقق التوقيع الرسمي لذلك المزود |
+| متوسطة | توقيع البريد يعتمد الآن SendGrid Event Webhook | إذا تغير مزود البريد إلى Resend أو SES، يجب استبدال verifier بتوقيع المزود الجديد قبل تحويل الإنتاج إليه |
 
 ## درجة الجاهزية للإنتاج
 

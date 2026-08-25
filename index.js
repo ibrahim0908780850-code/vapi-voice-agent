@@ -224,6 +224,7 @@ const aiRateLimit = createRateLimiter({ name: "ai", windowMs: 60 * 1000, max: 30
 const uploadRateLimit = createRateLimiter({ name: "upload", windowMs: 60 * 60 * 1000, max: 30 });
 const websiteImportRateLimit = createRateLimiter({ name: "website-import", windowMs: 60 * 60 * 1000, max: 10 });
 const websiteOrderRateLimit = createRateLimiter({ name: "website-order", windowMs: 60 * 60 * 1000, max: 10 });
+const websiteLeadRateLimit = createRateLimiter({ name: "website-lead", windowMs: 60 * 1000, max: 30 });
 const webhookRateLimit = createRateLimiter({ name: "webhook", windowMs: 60 * 1000, max: 120 });
 
 
@@ -448,6 +449,7 @@ renderWebsiteRoutes
 
 // Website Leads
 
+app.use("/website/lead", websiteLeadRateLimit);
 app.use(
 
 "/website",

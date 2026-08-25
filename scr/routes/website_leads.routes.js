@@ -1,5 +1,6 @@
 import express from "express";
 import { getSupabase } from "../config/supabase.js";
+import { resolvePublishedWebsiteTenant } from "../../server/lib/resourceAuthorization.js";
 
 const router = express.Router();
 
@@ -59,9 +60,12 @@ router.post(
 
 
 
-      const supabase =
+      const supabase = getSupabase();
 
-      getSupabase(tenant_id);
+      const publishedWebsite = await resolvePublishedWebsiteTenant(supabase, tenant_id, website_id);
+      if (!publishedWebsite) {
+        return res.status(404).json({ success:false, error:"website_not_found" });
+      }
 
 
 
@@ -164,7 +168,7 @@ router.post(
 
         website_id:
 
-        website_id || null,
+        publishedWebsite.id,
 
 
 
@@ -271,7 +275,7 @@ router.post(
         "Website Lead Error:",
 
 
-        error
+        error.message
 
 
       );

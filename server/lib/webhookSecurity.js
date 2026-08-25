@@ -26,6 +26,27 @@ export function verifyTwilioSignature({ signature, authToken, url, params = {} }
   return safeCompare(signature, expected);
 }
 
+function sendGridPublicKey(publicKey) {
+  if (!publicKey) return null;
+  const key = String(publicKey).replace(/\\n/g, "\n").trim();
+  if (key.includes("BEGIN PUBLIC KEY")) return key;
+  try {
+    return crypto.createPublicKey({ key: Buffer.from(key, "base64"), format: "der", type: "spki" });
+  } catch {
+    return null;
+  }
+}
+
+export function verifySendGridEventSignature({ rawBody, signature, timestamp, publicKey }) {
+  const key = sendGridPublicKey(publicKey);
+  if (!key || !rawBody || !signature || !timestamp) return false;
+  try {
+    return crypto.verify("sha256", Buffer.concat([Buffer.from(String(timestamp)), Buffer.from(rawBody)]), key, Buffer.from(signature, "base64"));
+  } catch {
+    return false;
+  }
+}
+
 export function requireConfiguredWebhookSecret(secret) {
   return process.env.NODE_ENV !== "production" || Boolean(secret);
 }

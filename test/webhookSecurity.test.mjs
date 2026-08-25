@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
-import { verifyBearerWebhookSecret, verifyMetaSignature, verifyTwilioSignature } from "../server/lib/webhookSecurity.js";
+import { verifyBearerWebhookSecret, verifyMetaSignature, verifySendGridEventSignature, verifyTwilioSignature } from "../server/lib/webhookSecurity.js";
 
 test("verifies the official Meta SHA-256 signature over the unparsed body", () => {
   const rawBody = Buffer.from('{"entry":[]}');
@@ -25,4 +25,14 @@ test("verifies Twilio signed form payloads without trusting the client body", ()
   const signature = crypto.createHmac("sha1", authToken).update(canonical).digest("base64");
   assert.equal(verifyTwilioSignature({ signature, authToken, url, params }), true);
   assert.equal(verifyTwilioSignature({ signature, authToken, url, params: { ...params, Body: "tampered" } }), false);
+});
+
+test("verifies SendGrid Event Webhook ECDSA signatures over timestamp plus raw body", () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const rawBody = Buffer.from('[{"event":"delivered"}]');
+  const timestamp = "1724580000";
+  const signature = crypto.sign("sha256", Buffer.concat([Buffer.from(timestamp), rawBody]), privateKey).toString("base64");
+  const publicPem = publicKey.export({ type: "spki", format: "pem" });
+  assert.equal(verifySendGridEventSignature({ rawBody, signature, timestamp, publicKey: publicPem }), true);
+  assert.equal(verifySendGridEventSignature({ rawBody: Buffer.from("tampered"), signature, timestamp, publicKey: publicPem }), false);
 });

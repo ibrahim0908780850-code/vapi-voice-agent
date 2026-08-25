@@ -2,15 +2,20 @@ import express from "express";
 import { handleEvent } from "../handlers/integration.handler.js";
 import { resolveTenant } from "../utils/resolveTenant.js";
 import { claimWebhookEvent } from "../../server/lib/requestControls.js";
-import { requireConfiguredWebhookSecret, verifyBearerWebhookSecret } from "../../server/lib/webhookSecurity.js";
+import { requireConfiguredWebhookSecret, verifySendGridEventSignature } from "../../server/lib/webhookSecurity.js";
 
 const router = express.Router();
 
 router.post("/webhook", async (req, res) => {
   try {
-    const secret = process.env.EMAIL_WEBHOOK_SECRET;
-    if (!requireConfiguredWebhookSecret(secret)) return res.sendStatus(503);
-    if (!verifyBearerWebhookSecret(req.get("authorization"), req.get("x-email-webhook-secret"), secret)) return res.sendStatus(401);
+    const publicKey = process.env.SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY;
+    if (!requireConfiguredWebhookSecret(publicKey)) return res.sendStatus(503);
+    if (!verifySendGridEventSignature({
+      rawBody: req.rawBody,
+      signature: req.get("x-twilio-email-event-webhook-signature"),
+      timestamp: req.get("x-twilio-email-event-webhook-timestamp"),
+      publicKey
+    })) return res.sendStatus(401);
 
     const body = req.body || {};
     const eventId = body.event_id || body.id || body.message_id || body.headers?.["message-id"];

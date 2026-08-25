@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { rejectTenantMismatch, requirePlatformOwner } from "../server/lib/requestAuth.js";
-import { resourceBelongsToTenant, websiteBelongsToTenant } from "../server/lib/resourceAuthorization.js";
+import { resolvePublishedWebsiteTenant, resourceBelongsToTenant, websiteBelongsToTenant } from "../server/lib/resourceAuthorization.js";
 import { sendUploadError } from "../server/lib/uploadSecurity.js";
 
 function createResponse() {
@@ -59,6 +59,16 @@ test("does not authorize CRM resources that belong to another tenant", async () 
     maybeSingle: async () => ({ data: null, error: null })
   };
   assert.equal(await resourceBelongsToTenant(client, "leads", "lead-b", "tenant-a"), false);
+});
+
+test("does not bind a public lead to an unpublished or foreign website", async () => {
+  const client = {
+    from() { return this; },
+    select() { return this; },
+    eq() { return this; },
+    maybeSingle: async () => ({ data: null, error: null })
+  };
+  assert.equal(await resolvePublishedWebsiteTenant(client, "tenant-a", "website-b"), null);
 });
 
 test("maps Multer file size and file count errors to safe client responses", () => {
