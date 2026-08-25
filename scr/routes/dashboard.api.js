@@ -440,6 +440,55 @@ error:error.message
 // COMPANY SETTINGS
 // =========================
 
+// Compatibility alias used by the original salih-ai dashboard source.
+router.get(
+"/agent",
+authMiddleware,
+extractTenant,
+async(req,res)=>{
+
+try{
+
+const supabase =
+getSupabase(req.tenant_id);
+
+const {data,error}=
+await supabase
+.from("ai_agents")
+.select("*")
+.eq(
+"tenant_id",
+req.tenant_id
+)
+.order(
+"created_at",
+{
+ascending:false
+}
+);
+
+if(error){
+return res.status(500)
+.json({
+error:error.message
+});
+}
+
+return res.json(
+data || []
+);
+
+}
+catch(error){
+return res.status(500)
+.json({
+error:error.message
+});
+}
+
+}
+);
+
 router.get(
 "/company",
 authMiddleware,

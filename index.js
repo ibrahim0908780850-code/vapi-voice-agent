@@ -600,6 +600,12 @@ platformRoutes
 
 );
 
+// Alias compatibility for the original salih-ai frontend. Keep /api/platform as the canonical prefix.
+app.use(
+  "/platform",
+  platformRoutes
+);
+
 
 
 
