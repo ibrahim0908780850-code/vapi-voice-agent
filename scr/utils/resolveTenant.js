@@ -1,4 +1,5 @@
 import { getSupabase } from "../config/supabase.js";
+import { resolveDevelopmentTenantHeader } from "./developmentTenantHeader.js";
 
 
 
@@ -295,32 +296,11 @@ export async function resolveTenant(req){
 
 
 
-  // =========================
-  // DEVELOPMENT ONLY
-  // =========================
-
-
-  const headerTenant =
-
-    req.headers["x-tenant-id"];
-
-
-
-
-
-  if(headerTenant){
-
-
-    console.log(
-      "⚠️ DEV Tenant:",
-      headerTenant
-    );
-
-
-    return headerTenant;
-
-
-  }
+  // This compatibility escape hatch is deliberately disabled by default and
+  // can never be enabled in production. Channel identities remain the source
+  // of truth for every externally reachable request.
+  const developmentTenant = resolveDevelopmentTenantHeader(req);
+  if (developmentTenant) return developmentTenant;
 
 
 
