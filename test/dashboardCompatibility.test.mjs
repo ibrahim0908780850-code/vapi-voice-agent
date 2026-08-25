@@ -32,16 +32,7 @@ test("dashboard agent alias returns the original frontend success payload for an
     const url = String(input);
     if (url.startsWith("https://example.supabase.co/")) {
       if (url.includes("/auth/v1/user")) {
-        return new Response(JSON.stringify({ id: "auth-user-a", email: "owner@example.com" }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
-      }
-      if (url.includes("/rest/v1/users")) {
-        return new Response(JSON.stringify({ id: "user-a", auth_user_id: "auth-user-a", tenant_id: "tenant-a", role: "owner" }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
+        throw new Error("dashboard compatibility must not require a Supabase access token");
       }
       assert.match(url, /ai_agents/);
       return new Response(JSON.stringify([{ id: "agent-a", name: "SALIH Agent", status: "active" }]), {
@@ -57,7 +48,7 @@ test("dashboard agent alias returns the original frontend success payload for an
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
-  const token = jwt.sign({ id: "user-a", tenant_id: "tenant-a", role: "owner" }, process.env.JWT_SECRET);
+  const token = jwt.sign({ id: "user-a", auth_user_id: "auth-user-a", tenant_id: "tenant-a", role: "owner" }, process.env.JWT_SECRET);
   try {
     const response = await nativeFetch(`http://127.0.0.1:${port}/api/dashboard/agent`, {
       headers: { Authorization: `Bearer ${token}` }

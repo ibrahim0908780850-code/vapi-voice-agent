@@ -2,14 +2,18 @@ import express from "express";
 
 import { getSupabase } from "../config/supabase.js";
 
-import { authMiddleware }
-from "../scr/middleware/auth.js";
-
-import { extractTenant }
-from "../middleware/tenant.js";
+import { authenticateRequest, requireTenantIdentity } from "../../server/lib/requestAuth.js";
 
 
 const router = express.Router();
+
+function dashboardAuth(req, res, next) {
+  return authenticateRequest(req, res, () => requireTenantIdentity(req, res, () => {
+    req.tenant_id = req.tenantId;
+    req.user = req.auth;
+    next();
+  }));
+}
 
 
 
@@ -19,8 +23,7 @@ const router = express.Router();
 
 router.get(
 "/stats",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async (req,res)=>{
 
 
@@ -138,8 +141,7 @@ error:error.message
 
 router.get(
 "/leads",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
@@ -192,8 +194,7 @@ res.json(data);
 
 router.get(
 "/calls",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
@@ -246,8 +247,7 @@ res.json(data);
 
 router.get(
 "/conversations",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
@@ -306,8 +306,7 @@ res.json(data);
 
 router.get(
 "/properties",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
@@ -361,8 +360,7 @@ res.json(data);
 
 router.get(
 "/ai-agent",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
@@ -443,8 +441,7 @@ error:error.message
 // Compatibility alias used by the original salih-ai dashboard source.
 router.get(
 "/agent",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 try{
@@ -491,8 +488,7 @@ error:error.message
 
 router.get(
 "/company",
-authMiddleware,
-extractTenant,
+dashboardAuth,
 async(req,res)=>{
 
 
