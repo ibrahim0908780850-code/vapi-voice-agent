@@ -1,6 +1,8 @@
 
 import express from "express";
 import cors from "cors";
+import { createCorsOptions, securityHeaders } from "./server/lib/httpSecurity.js";
+import { createRateLimiter } from "./server/lib/requestControls.js";
 
 
 // =========================
@@ -215,18 +217,20 @@ from "./scr/routes/website.generator.routes.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
+const authRateLimit = createRateLimiter({ name: "auth", windowMs: 15 * 60 * 1000, max: 20 });
+const aiRateLimit = createRateLimiter({ name: "ai", windowMs: 60 * 1000, max: 30 });
+const uploadRateLimit = createRateLimiter({ name: "upload", windowMs: 60 * 60 * 1000, max: 30 });
+const websiteImportRateLimit = createRateLimiter({ name: "website-import", windowMs: 60 * 60 * 1000, max: 10 });
+const webhookRateLimit = createRateLimiter({ name: "webhook", windowMs: 60 * 1000, max: 120 });
+
 
 
 app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://salih-ai-one.vercel.app"
-    ],
-    credentials: true
-  })
+  cors(createCorsOptions())
 );
+app.use(securityHeaders);
 
 
 
@@ -252,7 +256,10 @@ app.use(
 
 express.json({
 
-limit:"10mb"
+limit:"10mb",
+verify:(req,_res,buffer)=>{
+req.rawBody=buffer;
+}
 
 })
 
@@ -271,6 +278,7 @@ dashboardApiRoutes
 
 app.use(
 "/auth",
+authRateLimit,
 authRoutes
 );
 
@@ -298,6 +306,7 @@ app.use(
 
 "/whatsapp",
 
+webhookRateLimit,
 whatsappRoutes
 
 );
@@ -308,6 +317,7 @@ app.use(
 
 "/ai_gateway",
 
+aiRateLimit,
 aiGatewayRoutes
 
 );
@@ -318,6 +328,7 @@ app.use(
 
 "/meta",
 
+webhookRateLimit,
 metaRoutes
 
 );
@@ -328,6 +339,7 @@ app.use(
 
 "/email",
 
+webhookRateLimit,
 emailRoutes
 
 );
@@ -338,6 +350,7 @@ app.use(
 
 "/vapi",
 
+webhookRateLimit,
 vapiRoutes
 
 );
@@ -360,10 +373,8 @@ companyRoutes
 
 
 
-app.use(
-"/company",
-companyUploadRouter
-);
+app.use("/company/upload-document", uploadRateLimit);
+app.use("/company", companyUploadRouter);
 
 
 
@@ -375,13 +386,8 @@ companyUploadRouter
 
 // Website ingestion
 
-app.use(
-
-"/website",
-
-websiteRoutes
-
-);
+app.use("/website/ingest", websiteImportRateLimit);
+app.use("/website", websiteRoutes);
 
 
 
@@ -713,13 +719,7 @@ app.use(
 (err,req,res,next)=>{
 
 
-console.error(
-
-"SERVER ERROR:",
-
-err
-
-);
+console.error("SERVER ERROR:", err?.message || "unknown_error");
 
 
 

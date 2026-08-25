@@ -3,6 +3,8 @@ import axios from "axios";
 import crypto from "crypto";
 
 import { getSupabase } from "../config/supabase.js";
+import { claimWebhookEvent } from "../../server/lib/requestControls.js";
+import { requireConfiguredWebhookSecret, verifyBearerWebhookSecret } from "../../server/lib/webhookSecurity.js";
 
 const router = express.Router();
 
@@ -21,6 +23,21 @@ router.post("/", async (req, res) => {
 
 
   try {
+
+    const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
+    if (!requireConfiguredWebhookSecret(webhookSecret)) return res.status(503).json({ error: "WEBHOOK_NOT_CONFIGURED" });
+    if (!verifyBearerWebhookSecret(req.get("authorization"), req.get("x-vapi-secret"), webhookSecret)) {
+      return res.status(401).json({ error: "INVALID_WEBHOOK_SIGNATURE" });
+    }
+
+    const claimed = await claimWebhookEvent({
+      provider: "vapi",
+      eventId: toolCallId || req.body?.message?.call?.id,
+      rawBody: req.rawBody?.toString("utf8")
+    });
+    if (!claimed) {
+      return res.json({ results: [{ toolCallId, result: JSON.stringify({ success: true, duplicate: true }) }] });
+    }
 
 
     // =========================

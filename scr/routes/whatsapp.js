@@ -2,6 +2,8 @@ import express from "express";
 import axios from "axios";
 
 import { getSupabase } from "../config/supabase.js";
+import { claimWebhookEvent } from "../../server/lib/requestControls.js";
+import { requireConfiguredWebhookSecret, verifyTwilioSignature } from "../../server/lib/webhookSecurity.js";
 
 
 const router = express.Router();
@@ -109,6 +111,20 @@ router.post("/", async (req,res)=>{
 
 
 try{
+
+const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+if (!requireConfiguredWebhookSecret(twilioAuthToken)) return res.sendStatus(503);
+const signedUrl = new URL(req.originalUrl, process.env.BASE_URL || `${req.protocol}://${req.get("host")}`).href;
+if (!verifyTwilioSignature({
+signature:req.get("x-twilio-signature"),
+authToken:twilioAuthToken,
+url:signedUrl,
+params:req.body || {}
+})) return res.sendStatus(401);
+
+const messageId = req.body?.MessageSid || req.body?.SmsMessageSid;
+const claimed = await claimWebhookEvent({ provider:"twilio-whatsapp", eventId:messageId, rawBody:req.rawBody?.toString("utf8") || JSON.stringify(req.body || {}) });
+if (!claimed) return res.json({ success:true, duplicate:true });
 
 
 const supabase = getSupabase();
