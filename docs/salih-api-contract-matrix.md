@@ -91,3 +91,23 @@
 نجحت مجموعة backend كاملة بعد التعديلات: **72/72**. كما نجح اختبار HTTP لمسار dashboard agent باستخدام JWT يحمل `id` و`auth_user_id` و`tenant_id`، ويؤكد عدم الحاجة إلى Supabase access token. أُصلحت بيئة Vitest المرجعية في فرع salih-ai (تبعيات الاختبار ومسارات root)، ثم نجح اختبار `api.ts`: **2/2**.
 
 يبقى فحص TypeScript العام لواجهة salih-ai مانعاً للدمج: انتهى `npm run check` برمز خروج 1 و**1843** رسالة TypeScript في بيئة Node 22، بينما يعلن المشروع طلب Node 24. تتضمن النتائج المتبقية methods واجهة غير معرفة مثل `agents`, `crm`, `ai`, `knowledge`, `reports`, `settings`, `team`, و`websites`، إضافة إلى مشكلات إعدادات وأنواع موروثة. لا يوجد دليل تكامل حي مع Railway لأن فرع الخلفية لم يُنشر إلى staging مستقل؛ لذلك قرار الدمج إلى `main` هو **غير جاهز** رغم نجاح اختبارات العقود المؤكدة.
+
+# MISSING FRONTEND CONTRACTS
+
+## دليل المصدر الموثوق
+
+الفروع البعيدة المتاحة في مستودع `salih-ai` هي `main` و`security/phase-2-hardening` فقط. لا تعرّف نسخة `main` الحالية وحدات `api.crm` أو `api.agents` أو `api.ai`. عُثر على أحدث نسخة تاريخية موثقة تجمع الوحدات الثلاث في commit `170dfa2de454b98afd4675e599cb16e8ec821aee` بتاريخ 2026-07-15، وهو ancestor مثبت لفرع `main`. هذا الدليل يحدد routes التاريخية فقط؛ لا يبرر إعادة إضافتها إلى الواجهة أو الخلفية.
+
+| الوحدة | Frontend caller الحالي | Expected API method من المصدر الموثوق | Backend route إن وجد | HTTP method | Auth requirement | Role requirement | Tenant requirement | Evidence/source | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| CRM | `client/src/pages/Conversations.tsx` | `api.crm.conversations()` → `/crm/conversations` | لا يوجد؛ المتاح فقط `/crm/note` | `GET` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية؛ الواجهة تقصر صفحة المحادثات على أدوار الشركة | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، caller السطر 141، و`scr/routes/crm.js` | **MISSING** |
+| CRM | `client/src/pages/Conversations.tsx` | `api.crm.messages(...)` → `/crm/messages` | لا يوجد؛ المتاح فقط `/crm/note` | `GET` في المصدر التاريخي | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، caller السطر 188 يمرر `conversation_id` بينما method التاريخية لا تقبل وسيطاً | **MISSING** |
+| Agents | `client/src/pages/Agents.tsx` | `api.agents.list()` → `/agents` | لا يوجد | `GET` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، caller السطر 110، وجرد مسارات الخلفية | **MISSING** |
+| Agents | `client/src/pages/Agents.tsx` | `api.agents.create(data)` → `/agents` | لا يوجد | `POST` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، caller السطر 264 | **MISSING** |
+| Agents | `client/src/pages/Agents.tsx` | `api.agents.update(id,data)` → `/agents/:id` | لا يوجد | `PUT` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، callers 234 و335 | **MISSING** |
+| Agents | `client/src/pages/Agents.tsx` | `api.agents.delete(id)` → `/agents/:id` | لا يوجد | `DELETE` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2`، caller السطر 398 | **MISSING** |
+| Agents | لا يوجد caller حالي لهذا method | `api.agents.toggleStatus(id,status)` → `/agents/:id/status` | لا يوجد | `PATCH` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | متوقع من السياق؛ route غير موجودة | commit `170dfa2` | **MISSING** |
+| AI | `client/src/pages/Conversations.tsx` | `api.ai.chat(data)` → `/ai_gateway/chat` | لا يوجد؛ المتاح `POST /ai_gateway/` فقط | `POST` | Bearer بحسب request التاريخي | غير معرّف في method التاريخية | backend الفعلي يحل tenant من هوية قناة خارجية، لا من Bearer | commit `170dfa2`، caller السطر 281، و`scr/routes/ai_gateway.js` | **BROKEN** |
+| AI | لا يوجد caller حالي لهذا method | `api.ai.ask(data)` → `/ai_gateway` | `POST /ai_gateway/` موجود | `POST` | request التاريخي يرسل Bearer، لكن backend لا يستهلكه | غير معرّف في method التاريخية | backend يتطلب assistant/channel identity؛ لا يكفي tenant المستخدم | commit `170dfa2` و`resolveTenant.js` | **PARTIAL** |
+
+لا توجد صفوف CRM أو Agents أو AI بحالة **MATCHED**. لم تُنشأ routes أو methods اعتماداً على هذا التاريخ؛ يظل التقرير دليلاً لتقرير لاحق فقط بعد تثبيت عقد حالي معتمد ومحدد الصلاحيات والعزل.
