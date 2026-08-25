@@ -3,6 +3,8 @@ import express from "express";
 import { getSupabase } from "../config/supabase.js";
 
 import { generateAIResponse } from "../ai/brain.js";
+import { authenticateRequest, rejectTenantMismatch, requireTenantIdentity } from "../../server/lib/requestAuth.js";
+import { websiteBelongsToTenant } from "../../server/lib/resourceAuthorization.js";
 
 
 const router = express.Router();
@@ -13,15 +15,13 @@ const router = express.Router();
 // GENERATE WEBSITE CONTENT
 // =====================================
 
-router.post("/generate", async(req,res)=>{
+router.post("/generate", authenticateRequest, requireTenantIdentity, rejectTenantMismatch, async(req,res)=>{
 
 
 try{
 
 
 const {
-
-tenant_id,
 
 website_id,
 
@@ -36,7 +36,7 @@ city
 
 
 
-if(!tenant_id || !company_name){
+if(!company_name){
 
 
 return res.status(400).json({
@@ -55,6 +55,11 @@ error:"missing_data"
 
 
 const supabase = getSupabase();
+const tenant_id = req.tenantId;
+
+if (website_id && !(await websiteBelongsToTenant(supabase, website_id, tenant_id))) {
+return res.status(404).json({ success:false, error:"website_not_found" });
+}
 
 
 
@@ -336,13 +341,7 @@ error
 
 
 
-res.status(500).json({
-
-success:false,
-
-error:error.message
-
-});
+res.status(500).json({ success:false, error:"website_ai_generation_failed" });
 
 
 
