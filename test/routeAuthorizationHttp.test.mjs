@@ -11,18 +11,22 @@ process.env.PLATFORM_OWNER_EMAIL = "platform@example.com";
 const express = (await import("express")).default;
 const websiteRoutes = (await import("../scr/routes/website.routes.js")).default;
 const websiteContentRoutes = (await import("../scr/routes/website_content.routes.js")).default;
-const websiteOrderRoutes = (await import("../scr/routes/website.orders.routes.js")).default;
+const { createWebsiteOrdersRouter } = await import("../scr/routes/website.orders.routes.js");
 
 function tokenForTenant(tenant_id = "tenant-a") {
   return jwt.sign({ id: "user-a", auth_user_id: "auth-a", email: "tenant@example.com", role: "owner", tenant_id }, process.env.JWT_SECRET);
 }
 
-async function withServer(run) {
+function platformToken() {
+  return jwt.sign({ id: "platform-user", auth_user_id: "auth-platform", email: "platform@example.com", role: "platform_owner" }, process.env.JWT_SECRET);
+}
+
+async function withServer(run, { getClient } = {}) {
   const app = express();
   app.use(express.json());
   app.use("/website", websiteRoutes);
   app.use("/content", websiteContentRoutes);
-  app.use("/orders", websiteOrderRoutes);
+  app.use("/orders", createWebsiteOrdersRouter({ getClient }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -79,4 +83,17 @@ test("website order administration rejects a non-platform authenticated user", a
     assert.equal(response.status, 403);
     assert.deepEqual(response.body, { error: "PLATFORM_ACCESS_REQUIRED" });
   });
+});
+
+test("website order administration preserves a successful response for an authenticated platform owner", async () => {
+  const client = {
+    from() { return this; },
+    select() { return this; },
+    order: async () => ({ data: [], error: null })
+  };
+  await withServer(async (baseUrl) => {
+    const response = await request(baseUrl, "/orders", { token: platformToken() });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { success: true, orders: [] });
+  }, { getClient: () => client });
 });
