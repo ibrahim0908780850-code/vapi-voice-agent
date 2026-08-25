@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { rejectTenantMismatch } from "../server/lib/requestAuth.js";
-import { websiteBelongsToTenant } from "../server/lib/resourceAuthorization.js";
+import { resourceBelongsToTenant, websiteBelongsToTenant } from "../server/lib/resourceAuthorization.js";
 import { sendUploadError } from "../server/lib/uploadSecurity.js";
 
 function createResponse() {
@@ -40,6 +40,16 @@ test("rejects an image upload when the selected website belongs to another tenan
     maybeSingle: async () => ({ data: null, error: null })
   };
   assert.equal(await websiteBelongsToTenant(client, "website-b", "tenant-a"), false);
+});
+
+test("does not authorize CRM resources that belong to another tenant", async () => {
+  const client = {
+    from() { return this; },
+    select() { return this; },
+    eq() { return this; },
+    maybeSingle: async () => ({ data: null, error: null })
+  };
+  assert.equal(await resourceBelongsToTenant(client, "leads", "lead-b", "tenant-a"), false);
 });
 
 test("maps Multer file size and file count errors to safe client responses", () => {
