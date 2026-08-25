@@ -5,6 +5,7 @@ import multer from "multer";
 import { getSupabase } from "../config/supabase.js";
 import { authenticateRequest, rejectTenantMismatch, requireTenantIdentity } from "../../server/lib/requestAuth.js";
 import { createMulterFileFilter, createSafeStoragePath, sendUploadError, UPLOAD_POLICIES, validateUploadedFile } from "../../server/lib/uploadSecurity.js";
+import { websiteBelongsToTenant } from "../../server/lib/resourceAuthorization.js";
 
 
 const router = express.Router();
@@ -80,15 +81,8 @@ const tenant_id = req.tenantId;
 const validation = validateUploadedFile(req.file, "image");
 if (!validation.ok) return sendUploadError(res, { code: validation.code });
 
-if (website_id) {
-  const { data: website, error: websiteError } = await supabase
-    .from("websites")
-    .select("id")
-    .eq("id", website_id)
-    .eq("tenant_id", tenant_id)
-    .maybeSingle();
-  if (websiteError) throw websiteError;
-  if (!website) return res.status(404).json({ success: false, error: "website_not_found" });
+if (website_id && !(await websiteBelongsToTenant(supabase, website_id, tenant_id))) {
+  return res.status(404).json({ success: false, error: "website_not_found" });
 }
 
 
@@ -98,7 +92,7 @@ if (website_id) {
 // Clean filename
 
 const fileName = createSafeStoragePath({
-  tenantId,
+  tenantId: tenant_id,
   namespace: website_id ? `website-${website_id}` : "website-main",
   extension: validation.extension
 });
