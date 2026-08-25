@@ -1,254 +1,85 @@
-AI Voice Agent for Real Estate
+# SALIH AI — Real Estate CRM and AI Voice Platform
 
-An AI-powered voice and CRM backend designed for real-estate workflows.
+SALIH AI هو خادم Node.js/Express لمنصة SaaS متعددة الشركات تدير العملاء المحتملين، المحادثات، المكالمات، وكلاء الذكاء الاصطناعي وطلبات تفعيل الشركات لفرق العقار.
 
-The project combines voice-agent capabilities with backend services, AI intelligence modules, CRM-oriented workflows, integrations, background jobs, and persistent data management.
+## المعمارية الحالية
 
-Overview
+```mermaid
+flowchart TD
+  F[الواجهة: salih-ai / NexaFlow AI] -->|HTTPS + JWT| API[Express API]
+  C[قنوات: Vapi / WhatsApp / Meta / Email] -->|Webhooks| API
+  API --> AUTH[المصادقة ومنطق الشركات]
+  API --> CRM[CRM وطلبات الشركات]
+  API --> AI[بوابة Gemini والذكاء الاصطناعي]
+  API --> WEB[بناء المواقع والمعرفة]
+  AUTH --> DB[(Supabase PostgreSQL)]
+  CRM --> DB
+  AI --> DB
+  WEB --> DB
+  API --> QUEUE[Redis + BullMQ]
+  QUEUE --> WORKERS[التقارير والتصدير والإشعارات]
+```
 
-This project was built to explore how AI voice agents can be integrated into real-estate business workflows.
+نقطة التشغيل الحالية هي `index.js`. وهي تجمع إعداد Express والمسارات والعمال والمجدول في ملف واحد؛ لذلك ستنتقل المكونات تدريجياً إلى `app.js` و`server.js` دون تغيير أي مسار HTTP قائم. خارطة النقل في [docs/refactor-roadmap.md](docs/refactor-roadmap.md).
 
-The system includes backend services for handling application logic, integrations, AI-related processing, background jobs, authentication, real-time communication, and data operations.
+## المزايا
 
-The repository currently contains dedicated modules for:
+| المجال | القدرات الحالية |
+|---|---|
+| الحسابات والشركات | تسجيل الدخول، إنشاء طلب شركة، موافقة/رفض مالك المنصة، وربط الحساب بالشركة المفعلة |
+| CRM | العملاء المحتملون، الملاحظات، لوحات البيانات، والقنوات المتعددة |
+| الذكاء الاصطناعي | سياق الشركة، ذاكرة العميل، تحليل الصفقات، ووكلاء Gemini |
+| المكالمات والقنوات | Vapi وWhatsApp وMeta والبريد الإلكتروني عبر مسارات ويبهوك مستقلة |
+| المواقع | توليد وإدارة محتوى وتصميم وميديا ومواقع شركات |
+| الخلفية غير المتزامنة | Redis وBullMQ للتقارير اليومية والتصدير والإشعارات |
 
-- AI context building
-- Voice intelligence
-- Deal intelligence
-- Memory
-- Recommendations
-- Daily reporting
-- WhatsApp automation
-- Integration handling
-- Webhooks
-- Google Sheets integration
-- n8n integration
-- Background job processing
-- Automated tests
+## التشغيل المحلي
 
-Key Features
+يتطلب المشروع Node.js **20.x** وSupabase وRedis. انسخ ملف البيئة ثم املأ مفاتيحك الخاصة محلياً:
 
-AI & Voice Intelligence
-
-- AI context building
-- Voice intelligence processing
-- Conversation memory
-- Deal intelligence
-- Recommendation engine
-- Daily reporting engine
-
-CRM & Real-Estate Workflows
-
-- Real-estate focused CRM architecture
-- Lead and deal-oriented workflows
-- Automated processing
-- Business intelligence modules
-- Workflow integrations
-
-Integrations
-
-- Vapi voice-agent integration
-- Google Gemini integration
-- Supabase
-- n8n
-- Google Sheets
-- Webhooks
-- External API integrations
-
-Backend Infrastructure
-
-- Express.js backend
-- REST-style routes
-- WebSocket support
-- JWT authentication
-- Password hashing with bcrypt
-- Redis-based job processing
-- BullMQ background jobs
-- File upload handling
-- HTTP/API integrations
-- Automated tests
-
-Technology Stack
-
-Technology| Purpose
-Node.js 20| Runtime
-JavaScript / ESM| Application development
-Express.js| Backend server
-Supabase| Data and backend services
-Redis| Queue and background processing
-BullMQ| Job processing
-WebSockets| Real-time communication
-JWT| Authentication
-bcryptjs| Password security
-Axios| HTTP/API requests
-Cheerio| Web/data processing
-Multer| File uploads
-Vapi| Voice-agent platform
-Google Gemini| AI capabilities
-n8n| Workflow automation
-
-Project Structure
-
-vapi-voice-agent/
-├── ai/
-│   ├── contextbuilder.js
-│   ├── deal intelligence.js
-│   ├── daily.report.engine.js
-│   ├── memory.js
-│   ├── recommendation.engine.js
-│   ├── vapi.voice.intelligence.js
-│   └── whatsapp.autopilot.js
-│
-├── backend/
-│   └── routes/
-│
-├── server/
-│   └── lib/
-│
-├── src/
-├── routes/
-├── jobs/
-├── test/
-│
-├── n8n handler
-├── google sheets integration
-├── webhook integration
-├── integration.service.js
-├── integration.router.js
-├── integration dispatcher
-├── index.js
-└── package.json
-
-Architecture
-
-The project is organized around several layers:
-
-Voice / External Services
-          │
-          ▼
-      API / Webhooks
-          │
-          ▼
-     Express Backend
-          │
-    ┌─────┼─────┐
-    ▼     ▼     ▼
-   AI    CRM  Integrations
-    │     │     │
-    └─────┼─────┘
-          ▼
-     Data Services
-          │
-          ▼
-   Background Jobs
-   Redis + BullMQ
-
-Getting Started
-
-Requirements
-
-- Node.js 20.x
-- npm
-- Supabase project
-- Redis instance
-- Required API credentials for the integrations you want to enable
-
-Installation
-
-Clone the repository:
-
-git clone https://github.com/ibrahim0908780850-code/vapi-voice-agent.git
-
-Enter the project directory:
-
-cd vapi-voice-agent
-
-Install dependencies:
-
+```bash
+cp .env.example .env
 npm install
-
-Environment Variables
-
-Create your environment configuration according to the services enabled in your deployment.
-
-Do not commit API keys, database credentials, tokens, or other secrets to GitHub.
-
-Typical integrations may require credentials for services such as:
-
-Supabase
-Redis
-Vapi
-Google Gemini
-n8n
-Google Sheets
-
-Use your own project credentials when configuring these services.
-
-Running the Project
-
-Start the server:
-
-npm start
-
-The project uses Node.js 20.x.
-
-Testing
-
-Run the automated tests with:
-
 npm test
+npm start
+```
 
-The repository includes tests under the "test/" directory.
+لا تضع أي ملف `.env` أو مفاتيح حقيقية في GitHub. ملف [.env.example](.env.example) يسجل **الأسماء فقط** والقيم فيه أمثلة آمنة.
 
-Integrations
+## متغيرات البيئة
 
-Vapi
+| المتغير | مطلوب | الغرض |
+|---|---:|---|
+| `SUPABASE_URL` | نعم | عنوان مشروع Supabase |
+| `SUPABASE_SECRET_KEY` | نعم | مفتاح خادم Supabase؛ يبقى في الخلفية فقط |
+| `JWT_SECRET` | نعم | توقيع رموز الجلسات |
+| `PLATFORM_OWNER_EMAIL` | لتوجيه مالك المنصة بالإعداد | تعريف حساب مالك المنصة عند عدم وجود علامة الدور في قاعدة البيانات |
+| `REDIS_URL` | للتقارير والمهام | اتصال BullMQ/Redis |
+| `GEMINI_API_KEY` | لميزات الذكاء الاصطناعي | اتصال مزود Gemini |
+| `SENDGRID_API_KEY` | للبريد | إرسال البريد الإلكتروني |
+| `WHATSAPP_API_URL` | لواتساب | واجهة إرسال رسائل القناة |
+| `BASE_URL` | للنداءات الداخلية | عنوان الخلفية العام |
+| `FRONTEND_URL` | موصى به | أصل الواجهة المسموح به في الإنتاج |
 
-The project is designed around an AI voice-agent workflow using Vapi.
+`ALLOW_UNSAFE_TENANT_HEADER` متاح للتطوير المحلي فقط؛ لا تفعله في الإنتاج. لا يقبل الخادم `x-tenant-id` كهوية شركة في الإنتاج.
 
-Vapi provides the voice-agent infrastructure for creating voice experiences that can interact with users through natural conversations and integrate with external systems.
+## الاختبارات
 
-Google Gemini
+```bash
+npm test
+```
 
-Gemini is used as part of the project's AI capabilities and intelligence workflows.
+تغطي الاختبارات الحالية تسجيل الشركة، إنشاء الشركة المؤقتة، ظهور الطلب للمنصة، تفعيل الشركة، توجيه مالك المنصة، توجيه الشركة المفعلة، والتراجع الآمن عند غياب أعمدة اختيارية في المخطط. يوجد اختبار دورة كاملة في `test/companyLifecycle.test.mjs`، واختبار انحدار لعزل الشركة في `test/resolveTenant.test.mjs`.
 
-Supabase
+## الأمان والعزل متعدد الشركات
 
-Supabase is used as part of the project's data and backend infrastructure.
+- يتم تطبيق قرار الدور و`tenant_id` في الخلفية، لا بالاعتماد على إخفاء عناصر الواجهة.
+- جميع مفاتيح Supabase وGemini والقنوات تبقى في متغيرات تشغيل الخادم فقط.
+- لا تقبل مسارات الويبهوك هوية شركة خام من رأس HTTP في الإنتاج.
+- قبل نشر أي تكامل ويبهوك، أضف تحقق توقيع المزود، معالجة تكرار الطلبات، وسياسة مهلة وإعادة محاولة مناسبة.
 
-Redis & BullMQ
+راجع [تقرير الجاهزية للإنتاج](docs/production-readiness-audit.md) قبل إطلاق إنتاجي عام.
 
-Redis and BullMQ are used for background job processing and asynchronous workflows.
+## النشر
 
-n8n
-
-The repository contains dedicated n8n and integration-handling components for workflow automation.
-
-Google Sheets
-
-The project includes a Google Sheets integration for external data workflows.
-
-Why I Built This
-
-I built this project to explore the practical application of AI voice technology in real-estate workflows and to understand how voice agents can connect with backend systems, databases, automation tools, and business processes.
-
-The project evolved into a broader backend architecture containing AI modules, integrations, background processing, authentication, webhooks, and testing.
-
-Project Status
-
-This is an actively developed personal project and technical portfolio project.
-
-The architecture may continue to evolve as new AI capabilities, integrations, and workflows are added.
-
-Author
-
-Ibrahim Ahmed
-
-Freelance Web & AI Developer
-
-GitHub:
-https://github.com/ibrahim0908780850-code
-
-License
-
-This project is provided for educational and portfolio purposes. Check the repository contents for the applicable licensing information.
+تعمل الخلفية على Railway والواجهة الأصلية منشورة على Vercel. يجب ضبط `FRONTEND_URL`/CORS لمصدر الواجهة المنشور، وتعيين جميع مفاتيح الإنتاج من لوحة متغيرات الاستضافة، لا من Git.
