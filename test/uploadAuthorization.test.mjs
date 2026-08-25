@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rejectTenantMismatch } from "../server/lib/requestAuth.js";
+import { rejectTenantMismatch, requirePlatformOwner } from "../server/lib/requestAuth.js";
 import { resourceBelongsToTenant, websiteBelongsToTenant } from "../server/lib/resourceAuthorization.js";
 import { sendUploadError } from "../server/lib/uploadSecurity.js";
 
@@ -30,6 +30,15 @@ test("permits a request when its tenant body field matches the authenticated ten
   rejectTenantMismatch(req, res, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   assert.equal(res.statusCode, null);
+});
+
+test("blocks a tenant user from platform-only order administration", () => {
+  const res = createResponse();
+  let nextCalled = false;
+  requirePlatformOwner({ auth: { id: "user-a", email: "user@example.com", role: "owner" } }, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.body, { error: "PLATFORM_ACCESS_REQUIRED" });
 });
 
 test("rejects an image upload when the selected website belongs to another tenant", async () => {

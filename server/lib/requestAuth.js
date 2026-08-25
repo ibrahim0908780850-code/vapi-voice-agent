@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { isPlatformOwner } from "./platformOwner.js";
 
 export function getBearerToken(authorization) {
   if (typeof authorization !== "string") return null;
@@ -34,5 +35,10 @@ export function rejectTenantMismatch(req, res, next) {
   if (requestedTenantId && requestedTenantId !== req.tenantId) {
     return res.status(403).json({ error: "TENANT_ACCESS_DENIED" });
   }
+  return next();
+}
+
+export function requirePlatformOwner(req, res, next) {
+  if (!isPlatformOwner(req.auth)) return res.status(403).json({ error: "PLATFORM_ACCESS_REQUIRED" });
   return next();
 }

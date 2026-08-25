@@ -223,6 +223,7 @@ const authRateLimit = createRateLimiter({ name: "auth", windowMs: 15 * 60 * 1000
 const aiRateLimit = createRateLimiter({ name: "ai", windowMs: 60 * 1000, max: 30 });
 const uploadRateLimit = createRateLimiter({ name: "upload", windowMs: 60 * 60 * 1000, max: 30 });
 const websiteImportRateLimit = createRateLimiter({ name: "website-import", windowMs: 60 * 60 * 1000, max: 10 });
+const websiteOrderRateLimit = createRateLimiter({ name: "website-order", windowMs: 60 * 60 * 1000, max: 10 });
 const webhookRateLimit = createRateLimiter({ name: "webhook", windowMs: 60 * 1000, max: 120 });
 
 
@@ -483,6 +484,7 @@ app.use("/api/dashboard",dashboardRoutes);
 
 // Customer website orders
 
+app.use("/website/orders/create", websiteOrderRateLimit);
 app.use(
 
 "/website/orders",
